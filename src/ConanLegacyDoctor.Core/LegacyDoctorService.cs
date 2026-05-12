@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
@@ -18,6 +19,11 @@ public sealed class LegacyDoctorService
         WriteIndented = true,
         PropertyNamingPolicy = null
     };
+
+    static LegacyDoctorService()
+    {
+        JsonOptions.Converters.Add(new OperationDataConverter());
+    }
 
     private readonly string _stateRoot;
 
@@ -252,7 +258,18 @@ public sealed class LegacyDoctorService
                 continue;
             }
 
-            transactions.Add(ReadJson<DoctorTransaction>(transactionPath));
+            try
+            {
+                transactions.Add(ReadJson<DoctorTransaction>(transactionPath));
+            }
+            catch (JsonException)
+            {
+                // A malformed legacy ledger should not stop the desktop app from opening.
+            }
+            catch (InvalidOperationException)
+            {
+                // Keep the action view available even if one saved record is unreadable.
+            }
         }
 
         return transactions;
@@ -1343,6 +1360,49 @@ public sealed class LegacyDoctorService
             var destination = Path.Combine(bundleConfigRoot, Path.GetFileName(sourcePath));
             File.Copy(sourcePath, destination, true);
             stagedFiles.Add(destination);
+        }
+    }
+
+    private sealed class OperationDataConverter : JsonConverter<Dictionary<string, string?>>
+    {
+        public override Dictionary<string, string?> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            using var document = JsonDocument.ParseValue(ref reader);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new JsonException("Operation data must be a JSON object.");
+            }
+
+            var data = new Dictionary<string, string?>(StringComparer.Ordinal);
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                data[property.Name] = property.Value.ValueKind switch
+                {
+                    JsonValueKind.Null => null,
+                    JsonValueKind.String => property.Value.GetString(),
+                    _ => property.Value.GetRawText()
+                };
+            }
+
+            return data;
+        }
+
+        public override void Write(Utf8JsonWriter writer, Dictionary<string, string?> value, JsonSerializerOptions options)
+        {
+            writer.WriteStartObject();
+            foreach (var pair in value)
+            {
+                if (pair.Value is null)
+                {
+                    writer.WriteNull(pair.Key);
+                }
+                else
+                {
+                    writer.WriteString(pair.Key, pair.Value);
+                }
+            }
+
+            writer.WriteEndObject();
         }
     }
 }

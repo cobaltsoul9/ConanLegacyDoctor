@@ -6,8 +6,8 @@
 
 - Source code is available in this repository.
 - The latest tested Windows executable build is produced locally at `artifacts\publish\win-x64\ConanLegacyDoctor.exe`.
-- Current local build SHA-256: `ce3a3b9dd715ca3cdddb8563f86e82d437f64dcd62273fe8b8234eecdb8ac785`.
-- That executable is built and validated, but it has not yet been code-signed or attached to a GitHub Release asset.
+- Current local build SHA-256: `0dbf49606dadfe9ab1761d3c63da50395867559826f89ee8b0efb68f95e42bee`.
+- Downloadable Windows builds are published through GitHub Releases. The executable is not code-signed yet.
 - Until the signed release package is posted, the PowerShell launcher and the source remain the most transparent ways to inspect behavior directly.
 
 ## Practical Disclaimer

@@ -1,4 +1,6 @@
 using ConanLegacyDoctor.Core;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 var tempRoot = Path.Combine(Path.GetTempPath(), "ConanLegacyDoctor-CoreSmoke", Guid.NewGuid().ToString("N"));
 var gameRoot = Path.Combine(tempRoot, "SteamLibrary", "steamapps", "common", "Conan Exiles Legacy");
@@ -46,6 +48,8 @@ try
     Assert(File.Exists(Path.Combine(stateRoot, "transactions", transaction.Id, "quarantine", "SaveDatabases", "game.db")), "Expected quarantined save DB.");
     Assert(File.Exists(Path.Combine(stateRoot, "transactions", transaction.Id, "quarantine", "SaveDatabases", "game.db.backup")), "Expected safety copy.");
 
+    RewriteRotationSlotsAsLegacyArray(stateRoot, transaction.Id);
+
     var actions = doctor.GetActions();
     Assert(actions.Any(action => action.Id == transaction.Id), "Expected action record.");
     Assert(actions.Single(action => action.Id == transaction.Id).Details.Any(detail => detail.Contains("safety copy", StringComparison.OrdinalIgnoreCase)), "Expected safety-copy action detail.");
@@ -75,4 +79,27 @@ static void Assert(bool condition, string message)
     {
         throw new InvalidOperationException(message);
     }
+}
+
+static void RewriteRotationSlotsAsLegacyArray(string stateRoot, string transactionId)
+{
+    var transactionPath = Path.Combine(stateRoot, "transactions", transactionId, "transaction.json");
+    var root = JsonNode.Parse(File.ReadAllText(transactionPath))
+        ?? throw new InvalidOperationException("Expected transaction JSON.");
+    var operations = root["Operations"]?.AsArray()
+        ?? throw new InvalidOperationException("Expected operation array.");
+
+    foreach (var operation in operations)
+    {
+        if (!string.Equals(operation?["Type"]?.GetValue<string>(), "CreateBackupArchive", StringComparison.Ordinal))
+        {
+            continue;
+        }
+
+        operation!["Data"]!["RotationSlots"] = new JsonArray("slot1", "slot2", "slot3");
+        File.WriteAllText(transactionPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        return;
+    }
+
+    throw new InvalidOperationException("Expected TotCustom backup operation.");
 }
