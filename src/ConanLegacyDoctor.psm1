@@ -61,11 +61,12 @@ function Test-PathInsideRoot {
 function Assert-PathInsideRoot {
     param(
         [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)][string]$Root
+        [Parameter(Mandatory)][string]$Root,
+        [string]$BoundaryName = 'Conan game root'
     )
 
     if (-not (Test-PathInsideRoot -Path $Path -Root $Root)) {
-        throw "Refusing to operate outside the Conan game root: $Path"
+        throw "Refusing to operate outside the $BoundaryName`: $Path"
     }
 }
 
@@ -530,7 +531,7 @@ function Get-LegacyDoctorScan {
         $findings.Add((New-Finding `
             -Id 'saved.mod-controller-cache' `
             -Severity 'info' `
-            -Message 'ModControllerCache.json is present. Prepare Legacy can move it aside reversibly during cleanup.' `
+            -Message 'ModControllerCache.json is present. Prepare can move it aside reversibly during cleanup.' `
             -Path $modControllerCachePath `
             -Details $null))
     }
@@ -541,7 +542,7 @@ function Get-LegacyDoctorScan {
         $findings.Add((New-Finding `
             -Id 'saves.totcustom' `
             -Severity 'info' `
-            -Message "TotCustom save data is present. Prepare Legacy will create a rotating backup before cleanup." `
+            -Message "TotCustom save data is present. Prepare will create preserved-first and rolling recent backups before cleanup." `
             -Path $totCustomPath `
             -Details @{ FileCount = $totFiles }))
     }
@@ -1044,6 +1045,7 @@ function Restore-LegacyDoctorTransaction {
     if ($transaction.Status -eq 'restored') {
         return $transaction
     }
+    $transactionFolder = Get-TransactionFolder -TransactionId $TransactionId -StateRoot $StateRoot
 
     $operations = @($transaction.Operations)
     [array]::Reverse($operations)
@@ -1055,6 +1057,7 @@ function Restore-LegacyDoctorTransaction {
 
         switch ($operation.Type) {
             'CreateDirectory' {
+                Assert-PathInsideRoot -Path $operation.Data.Path -Root $transaction.GameRoot
                 [void](Remove-EmptyDoctorDirectory `
                     -Path $operation.Data.Path `
                     -Transaction $transaction `
@@ -1064,6 +1067,8 @@ function Restore-LegacyDoctorTransaction {
             'RewriteTextFile' {
                 $path = $operation.Data.Path
                 $backupPath = $operation.Data.BackupPath
+                Assert-PathInsideRoot -Path $path -Root $transaction.GameRoot
+                Assert-PathInsideRoot -Path $backupPath -Root $transactionFolder -BoundaryName 'recorded transaction folder'
                 if (-not (Test-Path -LiteralPath $backupPath -PathType Leaf)) {
                     Add-TransactionWarning -Transaction $transaction -Message "Restore backup is missing: $backupPath" -StateRoot $StateRoot
                     continue
@@ -1080,6 +1085,7 @@ function Restore-LegacyDoctorTransaction {
 
             'CopyPath' {
                 $destinationPath = $operation.Data.DestinationPath
+                Assert-PathInsideRoot -Path $destinationPath -Root $transactionFolder -BoundaryName 'recorded transaction folder'
                 if (Test-Path -LiteralPath $destinationPath) {
                     Remove-Item -LiteralPath $destinationPath -Force
                 }
@@ -1088,6 +1094,8 @@ function Restore-LegacyDoctorTransaction {
             'MovePath' {
                 $sourcePath = $operation.Data.SourcePath
                 $destinationPath = $operation.Data.DestinationPath
+                Assert-PathInsideRoot -Path $sourcePath -Root $transaction.GameRoot
+                Assert-PathInsideRoot -Path $destinationPath -Root $transactionFolder -BoundaryName 'recorded transaction folder'
 
                 if (-not (Test-Path -LiteralPath $destinationPath)) {
                     Add-TransactionWarning -Transaction $transaction -Message "Restore source is missing: $destinationPath" -StateRoot $StateRoot
@@ -1282,7 +1290,7 @@ function Get-OperationActionText {
         }
 
         'CreateBackupArchive' {
-            return ("Created a rotating TotCustom backup from '{0}' at '{1}'." -f $Operation.Data.SourcePath, $Operation.Data.BackupPath)
+            return ("Created TotCustom backups from '{0}' with the newest archive at '{1}'." -f $Operation.Data.SourcePath, $Operation.Data.BackupPath)
         }
 
         default {
@@ -1343,7 +1351,7 @@ function Get-LegacyDoctorVanillaLaunchPlan {
     $modListPath = Join-Path $resolvedGameRoot 'ConanSandbox\Mods\modlist.txt'
     $modListPresent = Test-Path -LiteralPath $modListPath -PathType Leaf
     if ($modListPresent) {
-        $warnings.Add("Active mod list detected at '$modListPath'. Run Prepare Legacy first so the doctor can move it aside reversibly.")
+        $warnings.Add("Active mod list detected at '$modListPath'. Run Prepare first so the doctor can move it aside reversibly.")
     }
 
     $preferredExecutables = switch ($branch.BranchMode) {
@@ -1398,7 +1406,7 @@ function Start-LegacyDoctorVanillaLaunch {
 
     $plan = Get-LegacyDoctorVanillaLaunchPlan -GameRoot $GameRoot
     if (-not $plan.VanillaReady) {
-        throw 'Vanilla launch is blocked because modlist.txt is still active. Run Prepare Legacy first, then try the vanilla launch again.'
+        throw 'Vanilla launch is blocked because modlist.txt is still active. Run Prepare first, then try the vanilla launch again.'
     }
 
     switch ($plan.LaunchStrategy) {

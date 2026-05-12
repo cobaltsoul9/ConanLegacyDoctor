@@ -1,4 +1,5 @@
 using ConanLegacyDoctor.Core;
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -82,6 +83,22 @@ try
     doctor.Restore(totRestore.Id, force: false);
     Assert(File.ReadAllText(totCustomFile).Contains("changed", StringComparison.Ordinal), "Expected TotCustom restore undo to bring back previous folder.");
 
+    var unsafeArchiveFolder = Path.Combine(stateRoot, "backups", "TotCustom", "unsafe-fixture");
+    Directory.CreateDirectory(unsafeArchiveFolder);
+    var unsafeArchivePath = Path.Combine(unsafeArchiveFolder, "TotCustom_unsafe.zip");
+    using (var unsafeArchive = ZipFile.Open(unsafeArchivePath, ZipArchiveMode.Create))
+    {
+        var entry = unsafeArchive.CreateEntry("..\\outside.txt");
+        using var writer = new StreamWriter(entry.Open());
+        writer.Write("unsafe");
+    }
+
+    var unsafeSource = doctor.GetTotCustomSources().Single(source => source.SourcePath == unsafeArchivePath);
+    AssertThrows<InvalidDataException>(
+        () => doctor.RestoreTotCustomSource(gameRoot, unsafeSource.Id),
+        "Expected unsafe TotCustom archive entry paths to be rejected.");
+    Assert(!File.Exists(Path.Combine(tempRoot, "outside.txt")), "Expected unsafe archive extraction to stay inside staging.");
+
     var launchPlan = doctor.GetVanillaLaunchPlan(gameRoot);
     Assert(launchPlan.VanillaReady, "Expected vanilla launch readiness after modlist quarantine.");
     Assert(launchPlan.LaunchStrategy == "DirectExecutable", "Expected direct executable launch strategy.");
@@ -107,6 +124,21 @@ static void Assert(bool condition, string message)
     {
         throw new InvalidOperationException(message);
     }
+}
+
+static void AssertThrows<TException>(Action action, string message)
+    where TException : Exception
+{
+    try
+    {
+        action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException(message);
 }
 
 static void RewriteRotationSlotsAsLegacyArray(string stateRoot, string transactionId)

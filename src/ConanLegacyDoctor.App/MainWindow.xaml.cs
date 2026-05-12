@@ -22,7 +22,7 @@ public partial class MainWindow : Window
         Loaded += (_, _) =>
         {
             AddActivity("Ready. If both Enhanced and Legacy are installed, the doctor will ask which install to inspect before it scans or changes anything.");
-            AddActivity("Use Prepare Legacy first. Vanilla launch stays blocked while an active modlist.txt is still present.");
+            AddActivity("Use Prepare first. Vanilla launch stays blocked while an active modlist.txt is still present.");
             RefreshActions();
             RefreshTotCustomSources();
         };

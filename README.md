@@ -8,8 +8,8 @@
 - Current public Windows release: `v0.1.3`.
 - The latest tested Windows executable build is produced locally at `artifacts\publish\win-x64\ConanLegacyDoctor.exe`.
 - Current local build SHA-256: `60f790bc41bd8b15a0482b60873b6f043de074a5b781df2985848eabf4b532f2`.
-- Downloadable Windows builds are published through GitHub Releases. The executable is not code-signed yet.
-- Until the signed release package is posted, the PowerShell launcher and the source remain the most transparent ways to inspect behavior directly.
+- Downloadable Windows builds are published through GitHub Releases. The executable is currently unsigned.
+- Since an unsigned executable can trigger Windows reputation warnings, the repository also keeps the source, checksum file, and transparent PowerShell entry points available for inspection.
 
 ## Practical Disclaimer
 
@@ -31,9 +31,9 @@ The tool is intentionally conservative:
 - Side-by-side Conay-style installs such as `Conan Exiles Enhanced` and `Conan Exiles Legacy`.
 - `ConanSandbox\Mods\modlist.txt`, which Funcom called out as a startup/crash contributor after Enhanced launched.
 - `ConanSandbox\Saved\Config\WindowsNoEditor\Engine.ini` for stale `bUseBuildIdOverride` / `BuildIdOverride` lines.
-- `ConanSandbox\Saved\ModControllerCache.json`, which can be moved aside reversibly during Legacy cleanup.
+- `ConanSandbox\Saved\ModControllerCache.json`, which can be moved aside reversibly during cleanup.
 - Presence of `game.db`, `game_0.db`, and `dlc_siptah.db` so players can see which save artifacts are present before deciding whether to quarantine them.
-- Presence of `ConanSandbox\Saved\SaveGames\TotCustom`, which the doctor backs up automatically before Legacy cleanup.
+- Presence of `ConanSandbox\Saved\SaveGames\TotCustom`, which the doctor backs up automatically before cleanup.
 - Recent log text for a small set of troubleshooting signals such as version mismatch language, pak/mod references, and graphics-driver/D3D12 hints.
 - The nearby Steam app manifest when one is available, including any detected beta key and a confidence-rated branch classification.
 - `modlist.txt` entries that point at files which are no longer present at their recorded paths.
@@ -58,7 +58,7 @@ The GUI is WPF-based and stays native to Windows. It provides:
 - install-folder selection and scan results,
 - a guided chooser when both Enhanced and Legacy installs are present,
 - confidence-rated branch status display,
-- guided reversible Legacy preparation,
+- guided reversible preparation,
 - optional save DB quarantine for a fresh vanilla boot test,
 - a native vanilla launch button for the selected install,
 - readable `Actions` browsing and undo,
@@ -117,7 +117,7 @@ powershell.exe -ExecutionPolicy Bypass -File .\LegacyDoctor.ps1 `
 
 That baseline mode:
 
-- Creates a rotating TotCustom backup first when `ConanSandbox\Saved\SaveGames\TotCustom` exists.
+- Creates a preserved-first plus rolling recent TotCustom backup set when `ConanSandbox\Saved\SaveGames\TotCustom` exists.
 - Moves `modlist.txt` into the transaction quarantine area if it exists.
 - Removes only the two stale build override lines from `Engine.ini`, if present, while preserving an exact backup for restore.
 - Moves `ModControllerCache.json` aside reversibly when present.

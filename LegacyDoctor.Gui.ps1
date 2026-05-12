@@ -80,7 +80,7 @@ Import-Module $modulePath -Force
                             <CheckBox x:Name="QuarantineSavesCheck" Content="Quarantine local save DBs for fresh vanilla boot" Margin="0,0,18,8"/>
                         </WrapPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <Button x:Name="PrepareButton" Content="Prepare Legacy" Width="150" Height="34" Margin="0,0,10,0" Background="#2C8A57" Foreground="White"/>
+                            <Button x:Name="PrepareButton" Content="Prepare" Width="150" Height="34" Margin="0,0,10,0" Background="#2C8A57" Foreground="White"/>
                             <Button x:Name="LaunchVanillaButton" Content="Launch Vanilla Test" Width="170" Height="34" Background="#2A6FDB" Foreground="White"/>
                         </StackPanel>
                     </Grid>
@@ -385,10 +385,10 @@ function Run-Scan {
             -ResetClientConfig:$resetConfigCheck.IsChecked `
             -QuarantineSaveDatabases:$quarantineSavesCheck.IsChecked `
             -StateRoot $StateRoot
-        Add-Activity -Message ("Prepared reversible Legacy action {0}." -f $transaction.Id)
+        Add-Activity -Message ("Prepared reversible action {0}." -f $transaction.Id)
         Refresh-Actions
         Run-Scan
-        [System.Windows.MessageBox]::Show("Legacy preparation action created:`n$($transaction.Id)", 'Preparation complete', 'OK', 'Information') | Out-Null
+        [System.Windows.MessageBox]::Show("Preparation action created:`n$($transaction.Id)", 'Preparation complete', 'OK', 'Information') | Out-Null
     }
     catch {
         [System.Windows.MessageBox]::Show($_.Exception.Message, 'Preparation failed', 'OK', 'Error') | Out-Null
@@ -490,7 +490,7 @@ $actionsGrid.Add_SelectionChanged({
 
 $window.Add_Loaded({
     Add-Activity -Message 'Ready. If both Enhanced and Legacy are installed, the doctor will ask which install to inspect before it scans or changes anything.'
-    Add-Activity -Message 'Use Prepare Legacy first. Vanilla launch stays blocked while an active modlist.txt is still present.'
+    Add-Activity -Message 'Use Prepare first. Vanilla launch stays blocked while an active modlist.txt is still present.'
     Refresh-Actions
 })
 

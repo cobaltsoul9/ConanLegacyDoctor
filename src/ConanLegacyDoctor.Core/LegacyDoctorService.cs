@@ -219,6 +219,7 @@ public sealed class LegacyDoctorService
             switch (operation.Type)
             {
                 case "CreateDirectory":
+                    AssertInsideRoot(operation.Data["Path"]!, transaction.GameRoot);
                     RemoveDoctorDirectoryIfEmpty(transaction, operation.Data["Path"]!);
                     break;
 
@@ -227,11 +228,13 @@ public sealed class LegacyDoctorService
                     break;
 
                 case "CopyPath":
+                    AssertInsideTransaction(transaction, operation.Data["DestinationPath"]!);
                     DeletePathIfPresent(operation.Data["DestinationPath"]!);
                     break;
 
                 case "InstallTotCustomFromArchive":
                 case "InstallTotCustomFromFolder":
+                    AssertInsideRoot(operation.Data["DestinationPath"]!, transaction.GameRoot);
                     DeletePathIfPresent(operation.Data["DestinationPath"]!);
                     break;
 
@@ -432,7 +435,7 @@ public sealed class LegacyDoctorService
 
         if (modListPresent)
         {
-            warnings.Add($"Active mod list detected at '{modListPath}'. Run Prepare Legacy first so the doctor can move it aside reversibly.");
+            warnings.Add($"Active mod list detected at '{modListPath}'. Run Prepare first so the doctor can move it aside reversibly.");
         }
 
         var executableCandidates = branch.BranchMode == "EnhancedOrDefault"
@@ -482,7 +485,7 @@ public sealed class LegacyDoctorService
         var plan = GetVanillaLaunchPlan(gameRoot);
         if (!plan.VanillaReady)
         {
-            throw new InvalidOperationException("Vanilla launch is blocked because modlist.txt is still active. Run Prepare Legacy first, then try the vanilla launch again.");
+            throw new InvalidOperationException("Vanilla launch is blocked because modlist.txt is still active. Run Prepare first, then try the vanilla launch again.");
         }
 
         switch (plan.LaunchStrategy)
@@ -726,7 +729,7 @@ public sealed class LegacyDoctorService
             findings.Add(new Finding(
                 "saved.mod-controller-cache",
                 "info",
-                "ModControllerCache.json is present. Prepare Legacy can move it aside reversibly during cleanup.",
+                "ModControllerCache.json is present. Prepare can move it aside reversibly during cleanup.",
                 path));
         }
     }
@@ -743,7 +746,7 @@ public sealed class LegacyDoctorService
         findings.Add(new Finding(
             "saves.totcustom",
             "info",
-            "TotCustom save data is present. Prepare Legacy will create a rotating backup before cleanup.",
+            "TotCustom save data is present. Prepare will create preserved-first and rolling recent backups before cleanup.",
             path,
             new Dictionary<string, object?> { ["FileCount"] = count }));
     }
@@ -867,7 +870,7 @@ public sealed class LegacyDoctorService
 
         var stagingFolder = Path.Combine(GetTransactionFolder(transaction.Id), "staging", "TotCustomRestore");
         Directory.CreateDirectory(stagingFolder);
-        ZipFile.ExtractToDirectory(source.SourcePath, stagingFolder, overwriteFiles: true);
+        ExtractZipArchiveSafely(source.SourcePath, stagingFolder);
 
         AssertInsideRoot(targetPath, transaction.GameRoot);
         CopyPath(stagingFolder, targetPath);
@@ -993,6 +996,8 @@ public sealed class LegacyDoctorService
     {
         var path = operation.Data["Path"]!;
         var backupPath = operation.Data["BackupPath"]!;
+        AssertInsideRoot(path, transaction.GameRoot);
+        AssertInsideTransaction(transaction, backupPath);
         if (!File.Exists(backupPath))
         {
             AddWarning(transaction, $"Restore backup is missing: {backupPath}");
@@ -1018,6 +1023,8 @@ public sealed class LegacyDoctorService
     {
         var sourcePath = operation.Data["SourcePath"]!;
         var destinationPath = operation.Data["DestinationPath"]!;
+        AssertInsideRoot(sourcePath, transaction.GameRoot);
+        AssertInsideTransaction(transaction, destinationPath);
         if (!PathExists(destinationPath))
         {
             AddWarning(transaction, $"Restore source is missing: {destinationPath}");
@@ -1131,6 +1138,9 @@ public sealed class LegacyDoctorService
 
     private string GetTransactionFolder(string transactionId) => Path.Combine(_stateRoot, "transactions", transactionId);
 
+    private void AssertInsideTransaction(DoctorTransaction transaction, string path) =>
+        AssertInsideBoundary(path, GetTransactionFolder(transaction.Id), "recorded transaction folder");
+
     private static string GetOperationActionText(DoctorOperation operation) =>
         operation.Type switch
         {
@@ -1138,7 +1148,7 @@ public sealed class LegacyDoctorService
             "CreateDirectory" => $"Created an empty placeholder folder at '{operation.Data["Path"]}'.",
             "RewriteTextFile" => $"Backed up and cleaned '{operation.Data["Path"]}' by removing stale build override lines.",
             "CopyPath" => $"Created a safety copy of '{operation.Data["SourcePath"]}' at '{operation.Data["DestinationPath"]}'.",
-            "CreateBackupArchive" => $"Created a rotating TotCustom backup from '{operation.Data["SourcePath"]}' at '{operation.Data["BackupPath"]}'.",
+            "CreateBackupArchive" => $"Created TotCustom backups from '{operation.Data["SourcePath"]}' with the newest archive at '{operation.Data["BackupPath"]}'.",
             "InstallTotCustomFromArchive" => $"Loaded TotCustom backup '{operation.Data["SourcePath"]}' into '{operation.Data["DestinationPath"]}'.",
             "InstallTotCustomFromFolder" => $"Copied TotCustom from '{operation.Data["SourcePath"]}' into '{operation.Data["DestinationPath"]}'.",
             _ => operation.Reason
@@ -1462,7 +1472,10 @@ public sealed class LegacyDoctorService
         return Convert.ToHexString(SHA256.HashData(stream));
     }
 
-    private static void AssertInsideRoot(string path, string root)
+    private static void AssertInsideRoot(string path, string root) =>
+        AssertInsideBoundary(path, root, "Conan game root");
+
+    private static void AssertInsideBoundary(string path, string root, string boundaryName)
     {
         var fullPath = Path.GetFullPath(path);
         var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -1475,7 +1488,7 @@ public sealed class LegacyDoctorService
 
         if (!isInside)
         {
-            throw new InvalidOperationException($"Refusing to operate outside the Conan game root: {path}");
+            throw new InvalidOperationException($"Refusing to operate outside the {boundaryName}: {path}");
         }
     }
 
@@ -1520,6 +1533,36 @@ public sealed class LegacyDoctorService
             var destinationFile = Path.Combine(destinationPath, relative);
             Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
             File.Copy(file, destinationFile, true);
+        }
+    }
+
+    private static void ExtractZipArchiveSafely(string archivePath, string destinationRoot)
+    {
+        Directory.CreateDirectory(destinationRoot);
+        var fullDestinationRoot = Path.GetFullPath(destinationRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        using var archive = ZipFile.OpenRead(archivePath);
+        foreach (var entry in archive.Entries)
+        {
+            var destinationPath = Path.GetFullPath(Path.Combine(fullDestinationRoot, entry.FullName));
+            if (!destinationPath.StartsWith(fullDestinationRoot, comparison))
+            {
+                throw new InvalidDataException($"TotCustom backup archive contains an unsafe entry path: {entry.FullName}");
+            }
+
+            if (string.IsNullOrEmpty(entry.Name))
+            {
+                Directory.CreateDirectory(destinationPath);
+                continue;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+            entry.ExtractToFile(destinationPath, overwrite: true);
         }
     }
 

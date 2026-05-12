@@ -121,7 +121,7 @@ Describe 'Conan Legacy Doctor' {
         $actions = @(Get-LegacyDoctorActions -StateRoot $stateRoot)
         $matching = @($actions | Where-Object Id -eq $transaction.Id)
         $matching.Count | Should Be 1
-        ($matching[0].Details -join "`n") | Should Match 'Created a rotating TotCustom backup'
+        ($matching[0].Details -join "`n") | Should Match 'Created TotCustom backups'
         ($matching[0].Details -join "`n") | Should Match 'ModControllerCache'
 
         $restored = Restore-LegacyDoctorTransaction -TransactionId $transaction.Id -StateRoot $stateRoot

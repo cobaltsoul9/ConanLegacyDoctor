@@ -90,7 +90,7 @@ function Write-TextTransaction {
                 Write-Output ("[{0}] Created safety copy of '{1}' at '{2}'." -f $operation.Status.ToUpperInvariant(), $operation.Data.SourcePath, $operation.Data.DestinationPath)
             }
             'CreateBackupArchive' {
-                Write-Output ("[{0}] Created rotating TotCustom backup '{1}'." -f $operation.Status.ToUpperInvariant(), $operation.Data.BackupPath)
+                Write-Output ("[{0}] Created TotCustom backup set; newest archive is '{1}'." -f $operation.Status.ToUpperInvariant(), $operation.Data.BackupPath)
             }
             default {
                 Write-Output ("[{0}] {1}" -f $operation.Status.ToUpperInvariant(), $operation.Reason)

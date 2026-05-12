@@ -64,9 +64,9 @@
                             <Border Padding="16" Background="#FFFFFF" BorderBrush="#D2D9E1" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12">
                                 <StackPanel>
                                     <TextBlock Text="The simplest path" FontSize="18" FontWeight="SemiBold" Foreground="#18202A"/>
-                                    <TextBlock Text="Use this when you are tired and just want Legacy to get a fair, clean try." Foreground="#53606F" Margin="0,5,0,12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Use this when you are tired and just want the selected install to get a fair, clean try." Foreground="#53606F" Margin="0,5,0,12" TextWrapping="Wrap"/>
                                     <TextBlock Text="1. Press Scan. If asked, choose the Conan install you want to repair." Margin="0,0,0,7" TextWrapping="Wrap"/>
-                                    <TextBlock Text="2. Leave the extra boxes off on the first attempt. Press Prepare Legacy." Margin="0,0,0,7" TextWrapping="Wrap"/>
+                                    <TextBlock Text="2. Leave the extra boxes off on the first attempt. Press Prepare." Margin="0,0,0,7" TextWrapping="Wrap"/>
                                     <TextBlock Text="3. Press Launch Vanilla Test. Let the game reach the menu before judging the result." Margin="0,0,0,7" TextWrapping="Wrap"/>
                                     <TextBlock Text="4. If you want everything put back, open Actions, pick the action, and press Undo Selected." TextWrapping="Wrap"/>
                                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
@@ -83,7 +83,7 @@
                                     <TextBlock Text="Try one stronger option at a time so you know what helped." Foreground="#53606F" Margin="0,5,0,12" TextWrapping="Wrap"/>
                                     <TextBlock Text="Quarantine local save DBs: Use this when the problem feels tied to loading a local save after Enhanced touched it." Margin="0,0,0,8" TextWrapping="Wrap"/>
                                     <TextBlock Text="Quarantine whole Mods directory: Use this when you want the strongest mod isolation, not just the active mod list." Margin="0,0,0,8" TextWrapping="Wrap"/>
-                                    <TextBlock Text="Reset client config folder: Use this when old settings may be the thing keeping Legacy from booting cleanly." TextWrapping="Wrap"/>
+                                    <TextBlock Text="Reset client config folder: Use this when old settings may be the thing keeping the selected install from booting cleanly." TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -95,7 +95,7 @@
                                     <TextBlock Text="Actions" FontWeight="SemiBold" Margin="0,12,0,2"/>
                                     <TextBlock Text="A readable list of what the doctor changed. This is where Undo lives." TextWrapping="Wrap"/>
                                     <TextBlock Text="Vanilla" FontWeight="SemiBold" Margin="0,12,0,2"/>
-                                    <TextBlock Text="A clean launch without an active mod list, useful when testing whether Legacy itself can boot." TextWrapping="Wrap"/>
+                                    <TextBlock Text="A clean launch without an active mod list, useful when testing whether the selected install itself can boot." TextWrapping="Wrap"/>
                                     <TextBlock Text="Quarantine" FontWeight="SemiBold" Margin="0,12,0,2"/>
                                     <TextBlock Text="Move aside safely and record how to restore it. The doctor prefers reversible moves over deleting." TextWrapping="Wrap"/>
                                 </StackPanel>
@@ -122,7 +122,7 @@
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="0" Padding="12" Margin="0,0,0,12" Background="#EAF2FB" BorderBrush="#C7D8EE" BorderThickness="1" CornerRadius="6">
-                        <TextBlock Text="Recommended first attempt: Scan, leave all three boxes off, press Prepare Legacy, then Launch Vanilla Test. Tick extra boxes only when the simpler pass does not help." Foreground="#243447" TextWrapping="Wrap"/>
+                        <TextBlock Text="Recommended first attempt: Scan, leave all three boxes off, press Prepare, then Launch Vanilla Test. Tick extra boxes only when the simpler pass does not help." Foreground="#243447" TextWrapping="Wrap"/>
                     </Border>
 
                     <Grid Grid.Row="1" Margin="0,0,0,12">
@@ -133,7 +133,7 @@
                         <WrapPanel VerticalAlignment="Center">
                             <CheckBox x:Name="QuarantineModsCheck" Content="Quarantine whole Mods directory" Margin="0,0,18,8" ToolTip="Stronger mod isolation. Use after the simple repair pass if mods may still be involved."/>
                             <CheckBox x:Name="ResetConfigCheck" Content="Reset client config folder for clean test" Margin="0,0,18,8" ToolTip="Moves local client settings aside so Conan can rebuild them for the test."/>
-                            <CheckBox x:Name="QuarantineSavesCheck" Content="Quarantine local save DBs for fresh vanilla boot" Margin="0,0,18,8" ToolTip="Moves local save databases aside after making safety copies, so Legacy can try a fresh local database."/>
+                            <CheckBox x:Name="QuarantineSavesCheck" Content="Quarantine local save DBs for fresh vanilla boot" Margin="0,0,18,8" ToolTip="Moves local save databases aside after making safety copies, so the selected install can try a fresh local database."/>
                         </WrapPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
                             <Button x:Name="PrepareButton" Content="Prepare" Width="150" Height="34" Margin="0,0,10,0" Background="#2C8A57" Foreground="White" Click="PrepareButton_Click" ToolTip="Records a reversible repair action for the selected install."/>

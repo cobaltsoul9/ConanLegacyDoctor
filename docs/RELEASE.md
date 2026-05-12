@@ -21,9 +21,9 @@ This produces:
 - `artifacts\publish\win-x64\ConanLegacyDoctor.exe`
 - `artifacts\publish\win-x64\SHA256SUMS.txt`
 
-## 3. Sign before wide public distribution
+## 3. Optional: sign if distribution warrants it
 
-Sign the executable with an Authenticode code-signing certificate owned by the publisher.
+If the project becomes widely distributed, sign the executable with an Authenticode code-signing certificate owned by the publisher. Until then, ship the checksum file and keep the release notes explicit that the executable is unsigned.
 
 Example shape:
 
@@ -44,7 +44,7 @@ Get-AuthenticodeSignature .\artifacts\publish\win-x64\ConanLegacyDoctor.exe
 
 ## 4. Recompute checksum after signing
 
-Signing changes the executable bytes. Regenerate `SHA256SUMS.txt` after the final signed binary exists.
+If signing is used, it changes the executable bytes. Regenerate `SHA256SUMS.txt` after the final signed binary exists.
 
 ## 5. Create the GitHub Release
 
