@@ -1,12 +1,12 @@
 # Conan Legacy Doctor
 
-`Conan Legacy Doctor` is a Windows PowerShell utility for players who switch from Conan Exiles Enhanced back to the Legacy branch and then hit startup hangs, black screens, or mod/config residue that makes the return path unreliable.
+`Conan Legacy Doctor` is a Windows desktop utility, with matching PowerShell tooling in the repository, for players who switch from Conan Exiles Enhanced back to the Legacy branch and then hit startup hangs, black screens, or mod/config residue that makes the return path unreliable.
 
 ## Downloads
 
 - Source code is available in this repository.
 - The latest tested Windows executable build is produced locally at `artifacts\publish\win-x64\ConanLegacyDoctor.exe`.
-- Current local build SHA-256: `0dbf49606dadfe9ab1761d3c63da50395867559826f89ee8b0efb68f95e42bee`.
+- Current local build SHA-256: `a0e5863ffd3a8e43c10e8738be6a39acec0bea527fb9fdca82acd261e5e4dd91`.
 - Downloadable Windows builds are published through GitHub Releases. The executable is not code-signed yet.
 - Until the signed release package is posted, the PowerShell launcher and the source remain the most transparent ways to inspect behavior directly.
 
@@ -49,6 +49,9 @@ For players who should not need to touch PowerShell directly, `Start-LegacyDocto
 
 The GUI is WPF-based and stays native to Windows. It provides:
 
+- a `Start Here` guide with the simplest first repair path,
+- short plain-language explanations of actions, quarantine, and vanilla launch,
+- tips for what to try next only if the first clean attempt does not help,
 - install-folder selection and scan results,
 - a guided chooser when both Enhanced and Legacy installs are present,
 - confidence-rated branch status display,

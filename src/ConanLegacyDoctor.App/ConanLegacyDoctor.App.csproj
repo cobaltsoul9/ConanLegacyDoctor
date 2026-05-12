@@ -9,6 +9,7 @@
     <AssemblyName>ConanLegacyDoctor</AssemblyName>
     <RootNamespace>ConanLegacyDoctor.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -17,5 +18,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ConanLegacyDoctor.Core\ConanLegacyDoctor.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\AppIcon.png" />
   </ItemGroup>
 </Project>
