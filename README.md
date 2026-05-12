@@ -5,6 +5,7 @@
 ## Downloads
 
 - Source code is available in this repository.
+- Current public Windows release: `v0.1.2`.
 - The latest tested Windows executable build is produced locally at `artifacts\publish\win-x64\ConanLegacyDoctor.exe`.
 - Current local build SHA-256: `a0e5863ffd3a8e43c10e8738be6a39acec0bea527fb9fdca82acd261e5e4dd91`.
 - Downloadable Windows builds are published through GitHub Releases. The executable is not code-signed yet.
