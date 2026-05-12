@@ -5,8 +5,10 @@
 ## Downloads
 
 - Source code is available in this repository.
-- A compiled Windows executable path now lives in the repository and can be published through GitHub Releases.
-- Until a signed public release is posted, the PowerShell launcher and the source remain the most transparent ways to inspect behavior directly.
+- The latest tested Windows executable build is produced locally at `artifacts\publish\win-x64\ConanLegacyDoctor.exe`.
+- Current local build SHA-256: `ce3a3b9dd715ca3cdddb8563f86e82d437f64dcd62273fe8b8234eecdb8ac785`.
+- That executable is built and validated, but it has not yet been code-signed or attached to a GitHub Release asset.
+- Until the signed release package is posted, the PowerShell launcher and the source remain the most transparent ways to inspect behavior directly.
 
 ## Practical Disclaimer
 
@@ -82,7 +84,12 @@ The publish output goes to:
 artifacts\publish\win-x64
 ```
 
-The executable manifest is `asInvoker`, so the app does not request admin rights by default. Release-signing and checksum steps are documented in `docs\RELEASE.md`.
+The current published output includes:
+
+- `ConanLegacyDoctor.exe`
+- `SHA256SUMS.txt`
+
+The executable manifest is `asInvoker`, so the app does not request admin rights by default. Release-signing, checksum regeneration after signing, and GitHub Release packaging are documented in `docs\RELEASE.md`.
 
 ## Commands
 
