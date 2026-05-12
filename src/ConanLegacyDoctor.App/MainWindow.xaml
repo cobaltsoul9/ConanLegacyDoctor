@@ -33,6 +33,7 @@
                 <StackPanel>
                     <TextBlock Text="Detected branch" Foreground="#526170" FontSize="12"/>
                     <TextBlock x:Name="BranchStatusText" Text="Not scanned" FontWeight="SemiBold" Foreground="#18202A" Margin="0,3,0,0"/>
+                    <TextBlock x:Name="BranchRoleText" Text="Choose or scan an install." Foreground="#526170" FontSize="12" Margin="0,3,0,0" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
         </DockPanel>
@@ -70,8 +71,8 @@
                                     <TextBlock Text="4. If you want everything put back, open Actions, pick the action, and press Undo Selected." TextWrapping="Wrap"/>
                                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
                                         <Button Content="Scan" Width="96" Height="32" Margin="0,0,10,0" Background="#2A6FDB" Foreground="White" Click="ScanButton_Click"/>
-                                        <Button Content="Prepare Legacy" Width="138" Height="32" Margin="0,0,10,0" Background="#2C8A57" Foreground="White" Click="PrepareButton_Click"/>
-                                        <Button Content="Launch Vanilla Test" Width="166" Height="32" Background="#2A6FDB" Foreground="White" Click="LaunchVanillaButton_Click"/>
+                                        <Button x:Name="StartPrepareButton" Content="Prepare" Width="138" Height="32" Margin="0,0,10,0" Background="#2C8A57" Foreground="White" Click="PrepareButton_Click"/>
+                                        <Button x:Name="StartLaunchButton" Content="Launch Vanilla Test" Width="166" Height="32" Background="#2A6FDB" Foreground="White" Click="LaunchVanillaButton_Click"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
@@ -135,7 +136,7 @@
                             <CheckBox x:Name="QuarantineSavesCheck" Content="Quarantine local save DBs for fresh vanilla boot" Margin="0,0,18,8" ToolTip="Moves local save databases aside after making safety copies, so Legacy can try a fresh local database."/>
                         </WrapPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <Button x:Name="PrepareButton" Content="Prepare Legacy" Width="150" Height="34" Margin="0,0,10,0" Background="#2C8A57" Foreground="White" Click="PrepareButton_Click" ToolTip="Records a reversible repair action for the selected install."/>
+                            <Button x:Name="PrepareButton" Content="Prepare" Width="150" Height="34" Margin="0,0,10,0" Background="#2C8A57" Foreground="White" Click="PrepareButton_Click" ToolTip="Records a reversible repair action for the selected install."/>
                             <Button x:Name="LaunchVanillaButton" Content="Launch Vanilla Test" Width="170" Height="34" Background="#2A6FDB" Foreground="White" Click="LaunchVanillaButton_Click" ToolTip="Starts the selected install in the clean test path after the active mod list has been moved aside."/>
                         </StackPanel>
                     </Grid>
@@ -157,6 +158,55 @@
                             <DataGridTextColumn Header="Path" Binding="{Binding Path}" Width="360"/>
                         </DataGrid.Columns>
                     </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="ToT Saves">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="130"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Padding="12" Margin="0,0,0,12" Background="#EEF7F0" BorderBrush="#C9DEC8" BorderThickness="1" CornerRadius="6">
+                        <TextBlock Text="Use this to load a dated TotCustom backup into the install selected at the top of the app. The doctor first moves the current TotCustom folder aside in a reversible action, then loads the chosen source." Foreground="#243447" TextWrapping="Wrap"/>
+                    </Border>
+
+                    <DataGrid x:Name="TotCustomSourcesGrid"
+                              Grid.Row="1"
+                              IsReadOnly="True"
+                              AutoGenerateColumns="False"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              SelectionMode="Single"
+                              AlternationCount="2"
+                              SelectionChanged="TotCustomSourcesGrid_SelectionChanged">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Choose This" Binding="{Binding DisplayName}" Width="260"/>
+                            <DataGridTextColumn Header="Source" Binding="{Binding SourceKind}" Width="170"/>
+                            <DataGridTextColumn Header="When" Binding="{Binding CapturedAtUtc}" Width="220"/>
+                            <DataGridTextColumn Header="Notes" Binding="{Binding Detail}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border Grid.Row="2" Background="White" BorderBrush="#D2D9E1" BorderThickness="1" Padding="10" Margin="0,12,0,0">
+                        <TextBox x:Name="TotCustomSourceDetailsText"
+                                 AcceptsReturn="True"
+                                 IsReadOnly="True"
+                                 TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 BorderThickness="0"
+                                 Background="Transparent"/>
+                    </Border>
+
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                        <Button x:Name="RefreshTotCustomSourcesButton" Content="Refresh Sources" Width="138" Height="32" Margin="0,0,10,0" Click="RefreshTotCustomSourcesButton_Click" ToolTip="Reload Doctor backups and any detected live Enhanced TotCustom folder."/>
+                        <Button x:Name="RestoreTotCustomButton" Content="Load Into Selected Install" Width="210" Height="32" Background="#2C8A57" Foreground="White" Click="RestoreTotCustomButton_Click" ToolTip="Safely replace the selected install's TotCustom folder with this dated source. The current folder is preserved in a reversible action first."/>
+                    </StackPanel>
                 </Grid>
             </TabItem>
 

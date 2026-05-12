@@ -814,33 +814,37 @@ function Backup-TotCustomIfPresent {
     $backupFolder = Join-Path $backupRoot ("{0}-{1}" -f $folderName, (Get-BackupPathKey -GameRoot $Transaction.GameRoot))
     Ensure-Directory -Path $backupFolder
 
-    $slot1 = Join-Path $backupFolder 'TotCustom_1.zip'
-    $slot2 = Join-Path $backupFolder 'TotCustom_2.zip'
-    $slot3 = Join-Path $backupFolder 'TotCustom_3.zip'
+    $oldestPreserved = Join-Path $backupFolder 'TotCustom_First.zip'
+    $rollingSlots = 1..8 | ForEach-Object { Join-Path $backupFolder ("TotCustom_{0}.zip" -f $_) }
     $tempZip = Join-Path $backupFolder ("TotCustom_{0}.tmp.zip" -f [Guid]::NewGuid().ToString('N'))
 
     try {
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         [System.IO.Compression.ZipFile]::CreateFromDirectory($sourcePath, $tempZip)
 
-        if (Test-Path -LiteralPath $slot2 -PathType Leaf) {
-            Move-Item -LiteralPath $slot2 -Destination $slot3 -Force
+        if (-not (Test-Path -LiteralPath $oldestPreserved -PathType Leaf)) {
+            Copy-Item -LiteralPath $tempZip -Destination $oldestPreserved -Force
         }
 
-        if (Test-Path -LiteralPath $slot1 -PathType Leaf) {
-            Move-Item -LiteralPath $slot1 -Destination $slot2 -Force
+        for ($slotIndex = $rollingSlots.Count - 1; $slotIndex -gt 0; $slotIndex--) {
+            $previousSlot = $rollingSlots[$slotIndex - 1]
+            $nextSlot = $rollingSlots[$slotIndex]
+            if (Test-Path -LiteralPath $previousSlot -PathType Leaf) {
+                Move-Item -LiteralPath $previousSlot -Destination $nextSlot -Force
+            }
         }
 
-        Move-Item -LiteralPath $tempZip -Destination $slot1 -Force
+        Move-Item -LiteralPath $tempZip -Destination $rollingSlots[0] -Force
 
         Add-CompletedOperation `
             -Transaction $Transaction `
             -Type 'CreateBackupArchive' `
-            -Reason 'Create a rotating backup of TotCustom save files before Legacy cleanup.' `
+            -Reason 'Create a preserved first TotCustom backup plus rolling recent TotCustom backups before cleanup.' `
             -Data @{
                 SourcePath = $sourcePath
-                BackupPath = $slot1
-                RotationSlots = @($slot1, $slot2, $slot3)
+                BackupPath = $rollingSlots[0]
+                FirstBackupPath = $oldestPreserved
+                RotationSlots = @($oldestPreserved) + @($rollingSlots)
             } `
             -StateRoot $StateRoot
     }

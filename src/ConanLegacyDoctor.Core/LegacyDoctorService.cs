@@ -13,6 +13,7 @@ public sealed class LegacyDoctorService
 {
     public const int SchemaVersion = 1;
     public const string ToolName = "ConanLegacyDoctor";
+    private const int TotCustomRollingBackupCount = 8;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -229,6 +230,11 @@ public sealed class LegacyDoctorService
                     DeletePathIfPresent(operation.Data["DestinationPath"]!);
                     break;
 
+                case "InstallTotCustomFromArchive":
+                case "InstallTotCustomFromFolder":
+                    DeletePathIfPresent(operation.Data["DestinationPath"]!);
+                    break;
+
                 case "MovePath":
                     RestoreMovedPath(transaction, operation);
                     break;
@@ -305,6 +311,115 @@ public sealed class LegacyDoctorService
                     transaction.Warnings);
             })
             .ToList();
+    }
+
+    public IReadOnlyList<TotCustomSource> GetTotCustomSources()
+    {
+        var sources = new List<TotCustomSource>();
+        var backupsRoot = Path.Combine(_stateRoot, "backups", "TotCustom");
+        if (Directory.Exists(backupsRoot))
+        {
+            foreach (var archivePath in Directory.EnumerateFiles(backupsRoot, "TotCustom_*.zip", SearchOption.AllDirectories)
+                         .Where(path => !path.EndsWith(".tmp.zip", StringComparison.OrdinalIgnoreCase))
+                         .OrderByDescending(File.GetLastWriteTimeUtc))
+            {
+                var archive = new FileInfo(archivePath);
+                var archiveBaseName = Path.GetFileNameWithoutExtension(archive.Name);
+                var slotName = archiveBaseName.Equals("TotCustom_First", StringComparison.OrdinalIgnoreCase)
+                    ? "Preserved first backup"
+                    : archiveBaseName.Replace('_', ' ');
+                var sourceLabel = Path.GetFileName(Path.GetDirectoryName(archivePath)!);
+                sources.Add(new TotCustomSource(
+                    $"archive:{archive.FullName}",
+                    $"{slotName} - {archive.LastWriteTimeUtc.ToLocalTime():yyyy-MM-dd HH:mm}",
+                    "Doctor Backup",
+                    archive.FullName,
+                    null,
+                    archive.LastWriteTimeUtc,
+                    archive.Length,
+                    archiveBaseName.Equals("TotCustom_First", StringComparison.OrdinalIgnoreCase)
+                        ? $"Oldest preserved Doctor backup from {sourceLabel}."
+                        : $"Recent Doctor backup from {sourceLabel}."));
+            }
+        }
+
+        foreach (var candidate in GetInstallCandidates()
+                     .Where(candidate => candidate.Branch.Equals("EnhancedOrDefault", StringComparison.OrdinalIgnoreCase)))
+        {
+            var liveFolder = Path.Combine(candidate.Path, "ConanSandbox", "Saved", "SaveGames", "TotCustom");
+            if (!Directory.Exists(liveFolder))
+            {
+                continue;
+            }
+
+            var files = Directory.EnumerateFiles(liveFolder, "*", SearchOption.AllDirectories)
+                .Select(path => new FileInfo(path))
+                .ToList();
+            var latestWrite = files.Count == 0
+                ? Directory.GetLastWriteTimeUtc(liveFolder)
+                : files.Max(file => file.LastWriteTimeUtc);
+            var totalBytes = files.Sum(file => file.Length);
+
+            sources.Add(new TotCustomSource(
+                $"enhanced-live:{candidate.Path}",
+                $"Enhanced TotCustom source - {latestWrite.ToLocalTime():yyyy-MM-dd HH:mm}",
+                "Enhanced Source",
+                liveFolder,
+                candidate.Path,
+                latestWrite,
+                totalBytes,
+                $"Read-only source pulled from detected Enhanced install '{candidate.FolderName}'."));
+        }
+
+        return sources
+            .OrderByDescending(source => source.CapturedAtUtc)
+            .ThenBy(source => source.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public DoctorTransaction RestoreTotCustomSource(string? gameRoot, string sourceId)
+    {
+        var resolvedGameRoot = ResolveConanGameRoot(gameRoot);
+        var source = GetTotCustomSources()
+            .SingleOrDefault(candidate => candidate.Id.Equals(sourceId, StringComparison.Ordinal));
+        if (source is null)
+        {
+            throw new InvalidOperationException("Choose a TotCustom backup or Enhanced source that is still available.");
+        }
+
+        var transaction = NewTransaction(resolvedGameRoot, "restore-totcustom");
+        var targetPath = Path.Combine(resolvedGameRoot, "ConanSandbox", "Saved", "SaveGames", "TotCustom");
+        var quarantineFolder = Path.Combine(GetTransactionFolder(transaction.Id), "quarantine", "TotCustomRestore");
+        Directory.CreateDirectory(quarantineFolder);
+
+        if (Directory.Exists(targetPath))
+        {
+            MovePathTransactionally(
+                transaction,
+                targetPath,
+                Path.Combine(quarantineFolder, "PreviousTotCustom"),
+                "Move the current TotCustom folder aside before restoring a selected source.");
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+        switch (source.SourceKind)
+        {
+            case "Doctor Backup":
+                InstallTotCustomFromArchive(transaction, source, targetPath);
+                break;
+
+            case "Enhanced Source":
+                InstallTotCustomFromFolder(transaction, source, targetPath);
+                break;
+
+            default:
+                throw new InvalidOperationException($"Unsupported TotCustom source kind: {source.SourceKind}");
+        }
+
+        transaction.Status = "completed";
+        transaction.CompletedAtUtc = DateTimeOffset.UtcNow;
+        SaveTransaction(transaction);
+        return transaction;
     }
 
     public VanillaLaunchPlan GetVanillaLaunchPlan(string? gameRoot)
@@ -697,34 +812,39 @@ public sealed class LegacyDoctorService
         var backupFolder = Path.Combine(_stateRoot, "backups", "TotCustom", $"{folderName}-{GetBackupPathKey(transaction.GameRoot)}");
         Directory.CreateDirectory(backupFolder);
 
-        var slot1 = Path.Combine(backupFolder, "TotCustom_1.zip");
-        var slot2 = Path.Combine(backupFolder, "TotCustom_2.zip");
-        var slot3 = Path.Combine(backupFolder, "TotCustom_3.zip");
+        var oldestPreserved = Path.Combine(backupFolder, "TotCustom_First.zip");
+        var rollingSlots = Enumerable.Range(1, TotCustomRollingBackupCount)
+            .Select(slot => Path.Combine(backupFolder, $"TotCustom_{slot}.zip"))
+            .ToArray();
         var tempZip = Path.Combine(backupFolder, $"TotCustom_{Guid.NewGuid():N}.tmp.zip");
 
         try
         {
             ZipFile.CreateFromDirectory(sourcePath, tempZip);
-            if (File.Exists(slot2))
+            if (!File.Exists(oldestPreserved))
             {
-                File.Move(slot2, slot3, true);
+                File.Copy(tempZip, oldestPreserved, true);
             }
 
-            if (File.Exists(slot1))
+            for (var slot = rollingSlots.Length - 1; slot > 0; slot--)
             {
-                File.Move(slot1, slot2, true);
+                if (File.Exists(rollingSlots[slot - 1]))
+                {
+                    File.Move(rollingSlots[slot - 1], rollingSlots[slot], true);
+                }
             }
 
-            File.Move(tempZip, slot1, true);
+            File.Move(tempZip, rollingSlots[0], true);
             AddCompletedOperation(
                 transaction,
                 "CreateBackupArchive",
-                "Create a rotating backup of TotCustom save files before Legacy cleanup.",
+                "Create a preserved first TotCustom backup plus rolling recent TotCustom backups before Legacy cleanup.",
                 new Dictionary<string, string?>
                 {
                     ["SourcePath"] = sourcePath,
-                    ["BackupPath"] = slot1,
-                    ["RotationSlots"] = string.Join("|", slot1, slot2, slot3)
+                    ["BackupPath"] = rollingSlots[0],
+                    ["FirstBackupPath"] = oldestPreserved,
+                    ["RotationSlots"] = string.Join("|", new[] { oldestPreserved }.Concat(rollingSlots))
                 });
         }
         catch (Exception ex)
@@ -736,6 +856,52 @@ public sealed class LegacyDoctorService
 
             AddWarning(transaction, $"TotCustom backup could not be created: {ex.Message}");
         }
+    }
+
+    private void InstallTotCustomFromArchive(DoctorTransaction transaction, TotCustomSource source, string targetPath)
+    {
+        if (!File.Exists(source.SourcePath))
+        {
+            throw new FileNotFoundException("The selected TotCustom backup archive is no longer available.", source.SourcePath);
+        }
+
+        var stagingFolder = Path.Combine(GetTransactionFolder(transaction.Id), "staging", "TotCustomRestore");
+        Directory.CreateDirectory(stagingFolder);
+        ZipFile.ExtractToDirectory(source.SourcePath, stagingFolder, overwriteFiles: true);
+
+        AssertInsideRoot(targetPath, transaction.GameRoot);
+        CopyPath(stagingFolder, targetPath);
+        AddCompletedOperation(
+            transaction,
+            "InstallTotCustomFromArchive",
+            "Restore TotCustom from a doctor backup archive.",
+            new Dictionary<string, string?>
+            {
+                ["SourcePath"] = source.SourcePath,
+                ["DestinationPath"] = targetPath,
+                ["CapturedAtUtc"] = source.CapturedAtUtc.ToString("O")
+            });
+    }
+
+    private void InstallTotCustomFromFolder(DoctorTransaction transaction, TotCustomSource source, string targetPath)
+    {
+        if (!Directory.Exists(source.SourcePath))
+        {
+            throw new DirectoryNotFoundException($"The selected Enhanced TotCustom folder is no longer available: {source.SourcePath}");
+        }
+
+        AssertInsideRoot(targetPath, transaction.GameRoot);
+        CopyPath(source.SourcePath, targetPath);
+        AddCompletedOperation(
+            transaction,
+            "InstallTotCustomFromFolder",
+            "Restore TotCustom from a detected Enhanced install folder.",
+            new Dictionary<string, string?>
+            {
+                ["SourcePath"] = source.SourcePath,
+                ["DestinationPath"] = targetPath,
+                ["CapturedAtUtc"] = source.CapturedAtUtc.ToString("O")
+            });
     }
 
     private void RewriteEngineIniTransactionally(DoctorTransaction transaction, string engineIniPath)
@@ -973,6 +1139,8 @@ public sealed class LegacyDoctorService
             "RewriteTextFile" => $"Backed up and cleaned '{operation.Data["Path"]}' by removing stale build override lines.",
             "CopyPath" => $"Created a safety copy of '{operation.Data["SourcePath"]}' at '{operation.Data["DestinationPath"]}'.",
             "CreateBackupArchive" => $"Created a rotating TotCustom backup from '{operation.Data["SourcePath"]}' at '{operation.Data["BackupPath"]}'.",
+            "InstallTotCustomFromArchive" => $"Loaded TotCustom backup '{operation.Data["SourcePath"]}' into '{operation.Data["DestinationPath"]}'.",
+            "InstallTotCustomFromFolder" => $"Copied TotCustom from '{operation.Data["SourcePath"]}' into '{operation.Data["DestinationPath"]}'.",
             _ => operation.Reason
         };
 
@@ -1108,6 +1276,34 @@ public sealed class LegacyDoctorService
         var commonRoot = Directory.GetParent(gameRoot)?.FullName;
         if (!string.Equals(Path.GetFileName(commonRoot), "common", StringComparison.OrdinalIgnoreCase))
         {
+            var selectedFolder = Path.GetFileName(gameRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (string.Equals(selectedFolder, "Conan Exiles Legacy", StringComparison.OrdinalIgnoreCase))
+            {
+                return new SteamBranchInfo(
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "LegacySideBySideCopy",
+                    "medium",
+                    "This folder uses the Conan Exiles Legacy side-by-side name, so it is treated as a Legacy repair target even though Steam manifest lookup is unavailable.");
+            }
+
+            if (string.Equals(selectedFolder, "Conan Exiles", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(selectedFolder, "Conan Exiles Enhanced", StringComparison.OrdinalIgnoreCase))
+            {
+                return new SteamBranchInfo(
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "EnhancedOrDefault",
+                    "medium",
+                    "This folder uses the default or Enhanced Conan naming pattern, so it is treated as the default/Enhanced branch when Steam manifest lookup is unavailable.");
+            }
+
             return new SteamBranchInfo(
                 false,
                 null,
@@ -1123,6 +1319,34 @@ public sealed class LegacyDoctorService
         var manifestPath = steamAppsRoot is null ? null : Path.Combine(steamAppsRoot, "appmanifest_440900.acf");
         if (manifestPath is null || !File.Exists(manifestPath))
         {
+            var selectedFolder = Path.GetFileName(gameRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (string.Equals(selectedFolder, "Conan Exiles Legacy", StringComparison.OrdinalIgnoreCase))
+            {
+                return new SteamBranchInfo(
+                    false,
+                    manifestPath,
+                    null,
+                    null,
+                    null,
+                    "LegacySideBySideCopy",
+                    "medium",
+                    "This folder uses the Conan Exiles Legacy side-by-side name, so it is treated as a Legacy repair target even though no nearby Steam manifest was found.");
+            }
+
+            if (string.Equals(selectedFolder, "Conan Exiles", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(selectedFolder, "Conan Exiles Enhanced", StringComparison.OrdinalIgnoreCase))
+            {
+                return new SteamBranchInfo(
+                    false,
+                    manifestPath,
+                    null,
+                    null,
+                    null,
+                    "EnhancedOrDefault",
+                    "medium",
+                    "This folder uses the default or Enhanced Conan naming pattern, so it is treated as the default/Enhanced branch when no nearby Steam manifest is available.");
+            }
+
             return new SteamBranchInfo(
                 false,
                 manifestPath,

@@ -5,9 +5,9 @@
 ## Downloads
 
 - Source code is available in this repository.
-- Current public Windows release: `v0.1.2`.
+- Current public Windows release: `v0.1.3`.
 - The latest tested Windows executable build is produced locally at `artifacts\publish\win-x64\ConanLegacyDoctor.exe`.
-- Current local build SHA-256: `a0e5863ffd3a8e43c10e8738be6a39acec0bea527fb9fdca82acd261e5e4dd91`.
+- Current local build SHA-256: `60f790bc41bd8b15a0482b60873b6f043de074a5b781df2985848eabf4b532f2`.
 - Downloadable Windows builds are published through GitHub Releases. The executable is not code-signed yet.
 - Until the signed release package is posted, the PowerShell launcher and the source remain the most transparent ways to inspect behavior directly.
 
@@ -53,6 +53,8 @@ The GUI is WPF-based and stays native to Windows. It provides:
 - a `Start Here` guide with the simplest first repair path,
 - short plain-language explanations of actions, quarantine, and vanilla launch,
 - tips for what to try next only if the first clean attempt does not help,
+- a `ToT Saves` tab for loading dated TotCustom backups into the currently selected install,
+- the ability to pull TotCustom directly from a detected live Enhanced install when one is available,
 - install-folder selection and scan results,
 - a guided chooser when both Enhanced and Legacy installs are present,
 - confidence-rated branch status display,
@@ -187,8 +189,10 @@ TotCustom backups are stored under:
 %LOCALAPPDATA%\ConanLegacyDoctor\backups\TotCustom
 ```
 
-The doctor keeps three rotating ZIP slots per detected install path, mirroring the conservative rolling-backup approach used by Conay.
+The doctor keeps the first TotCustom backup it ever makes for a detected install, plus eight rolling recent ZIP slots after that. This preserves an oldest baseline while still keeping a useful run of newer snapshots.
 Undo restores the reversible cleanup steps; the ZIP backups remain available on purpose.
+
+The desktop app also exposes those dated TotCustom backups in the `ToT Saves` tab. Loading one into the currently selected install first moves that install's existing `TotCustom` folder aside in a recorded action, then copies in the chosen backup. If a separate Enhanced install is detected and it has live `TotCustom` data, the same tab can load from that folder as well.
 
 Create a support bundle:
 

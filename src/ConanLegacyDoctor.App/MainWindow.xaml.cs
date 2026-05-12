@@ -11,17 +11,20 @@ public partial class MainWindow : Window
     private readonly LegacyDoctorService _doctor = new();
     private readonly ObservableCollection<Finding> _findings = [];
     private readonly ObservableCollection<DoctorAction> _actions = [];
+    private readonly ObservableCollection<TotCustomSource> _totCustomSources = [];
 
     public MainWindow()
     {
         InitializeComponent();
         FindingsGrid.ItemsSource = _findings;
         ActionsGrid.ItemsSource = _actions;
+        TotCustomSourcesGrid.ItemsSource = _totCustomSources;
         Loaded += (_, _) =>
         {
             AddActivity("Ready. If both Enhanced and Legacy are installed, the doctor will ask which install to inspect before it scans or changes anything.");
             AddActivity("Use Prepare Legacy first. Vanilla launch stays blocked while an active modlist.txt is still present.");
             RefreshActions();
+            RefreshTotCustomSources();
         };
     }
 
@@ -55,10 +58,11 @@ public partial class MainWindow : Window
                     ResetConfigCheck.IsChecked == true,
                     QuarantineSavesCheck.IsChecked == true));
 
-            AddActivity($"Prepared reversible Legacy action {transaction.Id}.");
+            AddActivity($"Prepared reversible action {transaction.Id}.");
             RefreshActions();
+            RefreshTotCustomSources();
             RunScan();
-            System.Windows.MessageBox.Show($"Legacy preparation action created:{Environment.NewLine}{transaction.Id}", "Preparation complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            System.Windows.MessageBox.Show($"Preparation action created:{Environment.NewLine}{transaction.Id}", "Preparation complete", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
@@ -119,6 +123,7 @@ public partial class MainWindow : Window
             var transaction = _doctor.Restore(selected.Id, ForceRestoreCheck.IsChecked == true);
             AddActivity($"Undo processed for action {transaction.Id}. Status: {transaction.Status}.");
             RefreshActions();
+            RefreshTotCustomSources();
             RunScan();
             System.Windows.MessageBox.Show($"Undo processed for action:{Environment.NewLine}{transaction.Id}", "Undo complete", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -161,6 +166,55 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RefreshTotCustomSourcesButton_Click(object sender, RoutedEventArgs e) => RefreshTotCustomSources();
+
+    private void TotCustomSourcesGrid_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (TotCustomSourcesGrid.SelectedItem is not TotCustomSource selected)
+        {
+            TotCustomSourceDetailsText.Text = "Select a dated TotCustom source to see where it came from.";
+            return;
+        }
+
+        var sizeText = selected.SizeBytes is null
+            ? "Size not available."
+            : $"{selected.SizeBytes:N0} bytes";
+        TotCustomSourceDetailsText.Text =
+            $"{selected.DisplayName}{Environment.NewLine}" +
+            $"{selected.Detail}{Environment.NewLine}" +
+            $"Captured: {selected.CapturedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}{Environment.NewLine}" +
+            $"Size: {sizeText}{Environment.NewLine}" +
+            $"Source path: {selected.SourcePath}";
+    }
+
+    private void RestoreTotCustomButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (TotCustomSourcesGrid.SelectedItem is not TotCustomSource selected)
+            {
+                throw new InvalidOperationException("Select a TotCustom backup or Enhanced source first.");
+            }
+
+            var transaction = _doctor.RestoreTotCustomSource(ResolveInteractiveGameRoot(), selected.Id);
+            AddActivity($"Loaded TotCustom source through reversible action {transaction.Id}.");
+            RefreshActions();
+            RefreshTotCustomSources();
+            RunScan();
+            System.Windows.MessageBox.Show(
+                "TotCustom was loaded into the selected install." + Environment.NewLine + Environment.NewLine +
+                "The previous TotCustom folder was moved aside inside a recorded action first, so you can undo this from the Actions tab if needed.",
+                "TotCustom loaded",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(ex.Message, "TotCustom load failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            AddActivity($"TotCustom load failed: {ex.Message}");
+        }
+    }
+
     private void RunScan()
     {
         try
@@ -174,8 +228,10 @@ public partial class MainWindow : Window
             }
 
             BranchStatusText.Text = $"{GetFriendlyBranchLabel(scan.Branch.BranchMode)} / {scan.Branch.Confidence}";
+            ApplyInstallRole(scan.Branch);
             GameRootText.Text = scan.GameRoot;
             AddActivity($"Scan complete for {scan.GameRoot}. {scan.Findings.Count} finding(s).");
+            RefreshTotCustomSources();
         }
         catch (Exception ex)
         {
@@ -242,7 +298,7 @@ public partial class MainWindow : Window
         });
         header.Children.Add(new System.Windows.Controls.TextBlock
         {
-            Text = "This is normal for side-by-side Enhanced and Legacy setups. Choose the install you want the doctor to inspect or repair.",
+            Text = "Choose the install you want to inspect or change. The doctor labels Legacy and Enhanced differently so you can see which one is selected before pressing repair or ToT restore actions.",
             Foreground = System.Windows.Media.Brushes.DimGray,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 6, 0, 0)
@@ -310,6 +366,31 @@ public partial class MainWindow : Window
             ? "No recorded actions yet."
             : "Select an action above to see exactly what the doctor did.";
         AddActivity($"Loaded {_actions.Count} action record(s).");
+    }
+
+    private void RefreshTotCustomSources()
+    {
+        _totCustomSources.Clear();
+        foreach (var source in _doctor.GetTotCustomSources())
+        {
+            _totCustomSources.Add(source);
+        }
+
+        TotCustomSourceDetailsText.Text = _totCustomSources.Count == 0
+            ? "No Doctor TotCustom backups or detected live Enhanced TotCustom folders are available yet."
+            : "Select a dated TotCustom source to see where it came from.";
+        AddActivity($"Loaded {_totCustomSources.Count} TotCustom source(s).");
+    }
+
+    private void ApplyInstallRole(SteamBranchInfo branch)
+    {
+        BranchRoleText.Text = branch.BranchMode switch
+        {
+            "Legacy" => "Selected install: Legacy Steam branch.",
+            "LegacySideBySideCopy" => "Selected install: likely side-by-side Legacy copy.",
+            "EnhancedOrDefault" => "Selected install: default/Enhanced branch.",
+            _ => "Selected install role is not fully confirmed."
+        };
     }
 
     private void AddActivity(string message)

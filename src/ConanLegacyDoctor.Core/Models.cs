@@ -113,3 +113,13 @@ public sealed record SupportBundleResult(
     bool IncludeRecentLogs,
     bool IncludeConfigSnapshots,
     int StagedFileCount);
+
+public sealed record TotCustomSource(
+    string Id,
+    string DisplayName,
+    string SourceKind,
+    string SourcePath,
+    string? SourceGameRoot,
+    DateTimeOffset CapturedAtUtc,
+    long? SizeBytes,
+    string Detail);

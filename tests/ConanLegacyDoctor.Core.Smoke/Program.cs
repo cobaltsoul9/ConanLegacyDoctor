@@ -54,6 +54,34 @@ try
     Assert(actions.Any(action => action.Id == transaction.Id), "Expected action record.");
     Assert(actions.Single(action => action.Id == transaction.Id).Details.Any(detail => detail.Contains("safety copy", StringComparison.OrdinalIgnoreCase)), "Expected safety-copy action detail.");
 
+    for (var backupIndex = 0; backupIndex < 8; backupIndex++)
+    {
+        File.WriteAllText(
+            Path.Combine(gameRoot, "ConanSandbox", "Saved", "SaveGames", "TotCustom", $"snapshot-{backupIndex}.json"),
+            $"{{\"snapshot\":{backupIndex}}}");
+        doctor.PrepareLegacy(
+            gameRoot,
+            new PreparationOptions(
+                QuarantineModsDirectory: false,
+                ResetClientConfig: false,
+                QuarantineSaveDatabases: false));
+    }
+
+    var totCustomSources = doctor.GetTotCustomSources();
+    var archivedTotCustom = totCustomSources.FirstOrDefault(source => source.SourceKind == "Doctor Backup" && source.DisplayName.StartsWith("TotCustom 1", StringComparison.Ordinal));
+    Assert(archivedTotCustom is not null, "Expected a TotCustom backup source.");
+    Assert(totCustomSources.Any(source => source.DisplayName.StartsWith("Preserved first backup", StringComparison.Ordinal)), "Expected oldest preserved TotCustom backup source.");
+    Assert(totCustomSources.Count(source => source.SourceKind == "Doctor Backup") >= 9, "Expected preserved first backup plus expanded rolling backup set.");
+
+    var totCustomFile = Path.Combine(gameRoot, "ConanSandbox", "Saved", "SaveGames", "TotCustom", "player.json");
+    File.WriteAllText(totCustomFile, "{\"looks\":\"changed\"}");
+    var totRestore = doctor.RestoreTotCustomSource(gameRoot, archivedTotCustom!.Id);
+    Assert(File.ReadAllText(totCustomFile).Contains("important", StringComparison.Ordinal), "Expected TotCustom archive restore to replace current contents.");
+    Assert(doctor.GetActions().Any(action => action.Id == totRestore.Id && action.Action == "restore-totcustom"), "Expected TotCustom restore action.");
+
+    doctor.Restore(totRestore.Id, force: false);
+    Assert(File.ReadAllText(totCustomFile).Contains("changed", StringComparison.Ordinal), "Expected TotCustom restore undo to bring back previous folder.");
+
     var launchPlan = doctor.GetVanillaLaunchPlan(gameRoot);
     Assert(launchPlan.VanillaReady, "Expected vanilla launch readiness after modlist quarantine.");
     Assert(launchPlan.LaunchStrategy == "DirectExecutable", "Expected direct executable launch strategy.");
