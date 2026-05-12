@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-and-smoke:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build solution
+        run: dotnet build ConanLegacyDoctor.slnx -c Release
+
+      - name: Run compiled core smoke test
+        run: dotnet run --project tests/ConanLegacyDoctor.Core.Smoke/ConanLegacyDoctor.Core.Smoke.csproj -c Release

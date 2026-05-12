@@ -1,0 +1,78 @@
+using ConanLegacyDoctor.Core;
+
+var tempRoot = Path.Combine(Path.GetTempPath(), "ConanLegacyDoctor-CoreSmoke", Guid.NewGuid().ToString("N"));
+var gameRoot = Path.Combine(tempRoot, "SteamLibrary", "steamapps", "common", "Conan Exiles Legacy");
+var steamAppsRoot = Path.Combine(tempRoot, "SteamLibrary", "steamapps");
+var stateRoot = Path.Combine(tempRoot, "state");
+
+Directory.CreateDirectory(Path.Combine(gameRoot, "ConanSandbox", "Mods"));
+Directory.CreateDirectory(Path.Combine(gameRoot, "ConanSandbox", "Saved", "Config", "WindowsNoEditor"));
+Directory.CreateDirectory(Path.Combine(gameRoot, "ConanSandbox", "Saved", "SaveGames", "TotCustom"));
+Directory.CreateDirectory(Path.Combine(gameRoot, "ConanSandbox", "Binaries", "Win64"));
+Directory.CreateDirectory(steamAppsRoot);
+
+File.WriteAllText(Path.Combine(gameRoot, "ConanSandbox", "Mods", "modlist.txt"), "mod-a.pak");
+File.WriteAllText(
+    Path.Combine(gameRoot, "ConanSandbox", "Saved", "Config", "WindowsNoEditor", "Engine.ini"),
+    "[OnlineSubsystem]\n" +
+    "bUseBuildIdOverride=True\n" +
+    "BuildIdOverride=460304166\n" +
+    "SomeOtherSetting=True\n");
+File.WriteAllText(Path.Combine(gameRoot, "ConanSandbox", "Saved", "ModControllerCache.json"), "{\"cache\":true}");
+File.WriteAllText(Path.Combine(gameRoot, "ConanSandbox", "Saved", "game.db"), "legacy-save");
+File.WriteAllText(Path.Combine(gameRoot, "ConanSandbox", "Saved", "SaveGames", "TotCustom", "player.json"), "{\"looks\":\"important\"}");
+File.WriteAllText(Path.Combine(gameRoot, "ConanSandbox", "Binaries", "Win64", "ConanSandbox.exe"), "stub");
+File.WriteAllText(
+    Path.Combine(steamAppsRoot, "appmanifest_440900.acf"),
+    "\"AppState\"\n{\n    \"appid\" \"440900\"\n    \"installdir\" \"Conan Exiles Legacy\"\n    \"UserConfig\"\n    {\n        \"betakey\" \"conan-exiles-legacy\"\n    }\n}\n");
+
+try
+{
+    var doctor = new LegacyDoctorService(stateRoot);
+    var scan = doctor.Scan(gameRoot);
+    Assert(scan.Branch.BranchMode == "Legacy", "Expected Legacy branch classification.");
+    Assert(scan.Findings.Any(finding => finding.Id == "mods.modlist"), "Expected modlist finding.");
+    Assert(scan.Findings.Any(finding => finding.Id == "config.engine-build-override"), "Expected build override finding.");
+
+    var transaction = doctor.PrepareLegacy(
+        gameRoot,
+        new PreparationOptions(
+            QuarantineModsDirectory: false,
+            ResetClientConfig: false,
+            QuarantineSaveDatabases: true));
+
+    Assert(!File.Exists(Path.Combine(gameRoot, "ConanSandbox", "Mods", "modlist.txt")), "Expected modlist quarantine.");
+    Assert(!File.Exists(Path.Combine(gameRoot, "ConanSandbox", "Saved", "game.db")), "Expected save DB quarantine.");
+    Assert(File.Exists(Path.Combine(stateRoot, "transactions", transaction.Id, "quarantine", "SaveDatabases", "game.db")), "Expected quarantined save DB.");
+    Assert(File.Exists(Path.Combine(stateRoot, "transactions", transaction.Id, "quarantine", "SaveDatabases", "game.db.backup")), "Expected safety copy.");
+
+    var actions = doctor.GetActions();
+    Assert(actions.Any(action => action.Id == transaction.Id), "Expected action record.");
+    Assert(actions.Single(action => action.Id == transaction.Id).Details.Any(detail => detail.Contains("safety copy", StringComparison.OrdinalIgnoreCase)), "Expected safety-copy action detail.");
+
+    var launchPlan = doctor.GetVanillaLaunchPlan(gameRoot);
+    Assert(launchPlan.VanillaReady, "Expected vanilla launch readiness after modlist quarantine.");
+    Assert(launchPlan.LaunchStrategy == "DirectExecutable", "Expected direct executable launch strategy.");
+
+    var restored = doctor.Restore(transaction.Id, force: false);
+    Assert(restored.Status == "restored", "Expected restored transaction.");
+    Assert(File.Exists(Path.Combine(gameRoot, "ConanSandbox", "Mods", "modlist.txt")), "Expected modlist restore.");
+    Assert(File.Exists(Path.Combine(gameRoot, "ConanSandbox", "Saved", "game.db")), "Expected save DB restore.");
+
+    Console.WriteLine("Core smoke test passed.");
+}
+finally
+{
+    if (Directory.Exists(tempRoot))
+    {
+        Directory.Delete(tempRoot, true);
+    }
+}
+
+static void Assert(bool condition, string message)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException(message);
+    }
+}

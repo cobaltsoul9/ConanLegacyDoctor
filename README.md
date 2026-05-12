@@ -5,8 +5,8 @@
 ## Downloads
 
 - Source code is available in this repository.
-- A Windows executable build will be added through GitHub Releases after packaging work is complete.
-- Until then, use the native PowerShell launcher described below.
+- A compiled Windows executable path now lives in the repository and can be published through GitHub Releases.
+- Until a signed public release is posted, the PowerShell launcher and the source remain the most transparent ways to inspect behavior directly.
 
 ## Practical Disclaimer
 
@@ -55,6 +55,34 @@ The GUI is WPF-based and stays native to Windows. It provides:
 - a native vanilla launch button for the selected install,
 - readable `Actions` browsing and undo,
 - ZIP support bundle export.
+
+## Compiled Windows App
+
+The repository now includes a .NET 10 WPF application:
+
+- `src\ConanLegacyDoctor.Core` - compiled repair engine and transaction logic
+- `src\ConanLegacyDoctor.App` - desktop executable
+- `tests\ConanLegacyDoctor.Core.Smoke` - compiled smoke test that exercises scan, quarantine, launch planning, and restore
+
+Build it with:
+
+```powershell
+dotnet build .\ConanLegacyDoctor.slnx -c Release
+```
+
+Publish a self-contained `win-x64` executable and checksum file with:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-win-x64.ps1
+```
+
+The publish output goes to:
+
+```text
+artifacts\publish\win-x64
+```
+
+The executable manifest is `asInvoker`, so the app does not request admin rights by default. Release-signing and checksum steps are documented in `docs\RELEASE.md`.
 
 ## Commands
 

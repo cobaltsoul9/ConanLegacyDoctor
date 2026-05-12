@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ConanLegacyDoctor.App/ConanLegacyDoctor.App.csproj" />
+    <Project Path="src/ConanLegacyDoctor.Core/ConanLegacyDoctor.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ConanLegacyDoctor.Core.Smoke/ConanLegacyDoctor.Core.Smoke.csproj" />
+  </Folder>
+</Solution>
