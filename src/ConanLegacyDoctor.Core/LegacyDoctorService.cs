@@ -522,6 +522,226 @@ public sealed class LegacyDoctorService
             DateTimeOffset.UtcNow);
     }
 
+    public SteamValidationPlan GetSteamValidationPlan(string? gameRoot)
+    {
+        var resolvedGameRoot = ResolveConanGameRoot(gameRoot);
+        var branch = GetSteamManifestInfo(resolvedGameRoot);
+        var warnings = new List<string>();
+        var steamManagedTarget = branch.InstallDirMatchesGameRoot == true;
+
+        if (!steamManagedTarget)
+        {
+            warnings.Add(
+                "Steam can only validate the currently Steam-managed Conan install. The selected folder is not confirmed as that target, so the doctor will not launch verification from this selection.");
+        }
+
+        return new SteamValidationPlan(
+            SchemaVersion,
+            ToolName,
+            resolvedGameRoot,
+            branch.BranchMode,
+            branch.Confidence,
+            steamManagedTarget,
+            "steam://validate/440900",
+            warnings);
+    }
+
+    public SteamValidationResult StartSteamValidation(string? gameRoot)
+    {
+        var plan = GetSteamValidationPlan(gameRoot);
+        if (!plan.SteamManagedTarget)
+        {
+            throw new InvalidOperationException(plan.Warnings.Last());
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = plan.SteamUri,
+            UseShellExecute = true
+        });
+
+        return new SteamValidationResult(
+            SchemaVersion,
+            ToolName,
+            plan.GameRoot,
+            plan.BranchMode,
+            plan.SteamUri,
+            DateTimeOffset.UtcNow);
+    }
+
+    public SteamRediscoveryState GetSteamRediscoveryState()
+    {
+        var steamAppsRoot = ResolveConanSteamAppsRoot();
+        var commonRoot = Path.Combine(steamAppsRoot, "common");
+        var manifestPath = Path.Combine(steamAppsRoot, "appmanifest_440900.acf");
+        var manifest = File.Exists(manifestPath) ? File.ReadAllText(manifestPath) : null;
+
+        var managed = GetSteamRediscoveryFolder("Managed Conan", Path.Combine(commonRoot, "Conan Exiles"));
+        var enhanced = GetSteamRediscoveryFolder("Parked Enhanced", Path.Combine(commonRoot, "Conan Exiles Enhanced"));
+        var legacy = GetSteamRediscoveryFolder("Parked Legacy", Path.Combine(commonRoot, "Conan Exiles Legacy"));
+
+        var requestedBeta = manifest is null ? null : ReadManifestSectionValue(manifest, "UserConfig", "BetaKey");
+        var mountedBeta = manifest is null ? null : ReadManifestSectionValue(manifest, "MountedConfig", "BetaKey");
+        var guidance = new List<string>();
+
+        if (!managed.Exists && !enhanced.Exists && !legacy.Exists)
+        {
+            guidance.Add("No Conan branch folder was found in this Steam library. Choose the branch in Steam and install it normally.");
+        }
+        else if (managed.LooksEnhanced)
+        {
+            guidance.Add("Steam currently sees an Enhanced-shaped Conan folder at the managed path.");
+        }
+        else if (managed.LooksLegacy)
+        {
+            guidance.Add("Steam currently sees a Legacy-shaped Conan folder at the managed path.");
+        }
+        else if (managed.Exists)
+        {
+            guidance.Add("Steam currently has a Conan folder at the managed path, but the doctor cannot classify it confidently.");
+        }
+        else
+        {
+            guidance.Add("No managed Conan folder is exposed right now. This is the right moment to reveal the branch folder you want Steam to discover.");
+        }
+
+        if (manifest is null)
+        {
+            guidance.Add("Steam does not currently have Conan's app manifest in this library, which usually means Steam considers the game uninstalled.");
+        }
+        else if (!string.Equals(requestedBeta, mountedBeta, StringComparison.OrdinalIgnoreCase))
+        {
+            guidance.Add("Steam shows a branch change in progress or pending: the requested and mounted branches do not match.");
+        }
+
+        if (!enhanced.Exists)
+        {
+            guidance.Add("No parked Enhanced folder is available. Switching to Enhanced can still be guided, but Steam may need to download that branch.");
+        }
+
+        if (!legacy.Exists)
+        {
+            guidance.Add("No parked Legacy folder is available. Switching to Legacy can still be guided, but Steam may need to download that branch.");
+        }
+
+        return new SteamRediscoveryState(
+            SchemaVersion,
+            ToolName,
+            steamAppsRoot,
+            manifestPath,
+            manifest is not null,
+            requestedBeta,
+            mountedBeta,
+            manifest is null ? null : ReadManifestValue(manifest, "buildid"),
+            manifest is null ? null : ReadManifestValue(manifest, "TargetBuildID"),
+            manifest is null ? null : ReadManifestLong(manifest, "BytesToDownload"),
+            manifest is null ? null : ReadManifestLong(manifest, "BytesDownloaded"),
+            managed,
+            enhanced,
+            legacy,
+            managed.LooksEnhanced,
+            managed.LooksLegacy,
+            managed.Exists && !legacy.Exists,
+            managed.Exists && !enhanced.Exists,
+            !managed.Exists && enhanced.Exists,
+            !managed.Exists && legacy.Exists,
+            guidance);
+    }
+
+    public DoctorTransaction PrepareSteamRediscovery(string targetBranch)
+    {
+        var state = GetSteamRediscoveryState();
+        var transaction = NewTransaction(state.SteamAppsRoot, "steam-rediscovery-prepare");
+
+        switch (NormalizeRediscoveryTarget(targetBranch))
+        {
+            case "Enhanced":
+                if (!state.Managed.Exists)
+                {
+                    throw new InvalidOperationException("No managed Conan folder is exposed. There is nothing to park before uninstall.");
+                }
+
+                if (state.LegacyParked.Exists)
+                {
+                    throw new InvalidOperationException("A parked Legacy folder already exists. Resolve that before parking the managed folder for an Enhanced switch.");
+                }
+
+                MovePathTransactionally(
+                    transaction,
+                    state.Managed.Path,
+                    state.LegacyParked.Path,
+                    "Park the currently managed Conan folder as Legacy before Steam uninstall/rediscovery.");
+                break;
+
+            case "Legacy":
+                if (!state.Managed.Exists)
+                {
+                    throw new InvalidOperationException("No managed Conan folder is exposed. There is nothing to park before uninstall.");
+                }
+
+                if (state.EnhancedParked.Exists)
+                {
+                    throw new InvalidOperationException("A parked Enhanced folder already exists. Resolve that before parking the managed folder for a Legacy switch.");
+                }
+
+                MovePathTransactionally(
+                    transaction,
+                    state.Managed.Path,
+                    state.EnhancedParked.Path,
+                    "Park the currently managed Conan folder as Enhanced before Steam uninstall/rediscovery.");
+                break;
+        }
+
+        transaction.Status = "completed";
+        transaction.CompletedAtUtc = DateTimeOffset.UtcNow;
+        SaveTransaction(transaction);
+        return transaction;
+    }
+
+    public DoctorTransaction ExposeSteamRediscoveryTarget(string targetBranch)
+    {
+        var state = GetSteamRediscoveryState();
+        if (state.Managed.Exists)
+        {
+            throw new InvalidOperationException("Steam already has a managed Conan folder exposed. Uninstall first or resolve that folder before revealing another branch.");
+        }
+
+        var transaction = NewTransaction(state.SteamAppsRoot, "steam-rediscovery-expose");
+        switch (NormalizeRediscoveryTarget(targetBranch))
+        {
+            case "Enhanced":
+                if (!state.EnhancedParked.Exists)
+                {
+                    throw new InvalidOperationException("No parked Enhanced folder is available. Press Install in Steam to download Enhanced normally.");
+                }
+
+                MovePathTransactionally(
+                    transaction,
+                    state.EnhancedParked.Path,
+                    state.Managed.Path,
+                    "Expose the parked Enhanced folder at Steam's managed Conan path so Install can discover existing files.");
+                break;
+
+            case "Legacy":
+                if (!state.LegacyParked.Exists)
+                {
+                    throw new InvalidOperationException("No parked Legacy folder is available. Press Install in Steam to download Legacy normally.");
+                }
+
+                MovePathTransactionally(
+                    transaction,
+                    state.LegacyParked.Path,
+                    state.Managed.Path,
+                    "Expose the parked Legacy folder at Steam's managed Conan path so Install can discover existing files.");
+                break;
+        }
+
+        transaction.Status = "completed";
+        transaction.CompletedAtUtc = DateTimeOffset.UtcNow;
+        SaveTransaction(transaction);
+        return transaction;
+    }
+
     public SupportBundleResult ExportSupportBundle(string? gameRoot, SupportBundleOptions options)
     {
         var resolvedGameRoot = ResolveConanGameRoot(gameRoot);
@@ -1194,6 +1414,102 @@ public sealed class LegacyDoctorService
         }
 
         return results;
+    }
+
+    private string ResolveConanSteamAppsRoot()
+    {
+        var candidates = GetSteamLibraryRoots()
+            .Select(root => Path.Combine(root, "steamapps"))
+            .Where(Directory.Exists)
+            .Select(steamApps => new
+            {
+                Path = steamApps,
+                Score = ScoreConanSteamAppsRoot(steamApps)
+            })
+            .Where(candidate => candidate.Score > 0)
+            .OrderByDescending(candidate => candidate.Score)
+            .ThenBy(candidate => candidate.Path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return candidates.Count switch
+        {
+            1 => candidates[0].Path,
+            0 => throw new DirectoryNotFoundException("No Steam library containing Conan Exiles folders or manifest data was found."),
+            _ when candidates[0].Score > candidates[1].Score => candidates[0].Path,
+            _ => throw new InvalidOperationException("More than one Steam library looks equally likely for Conan Exiles. Keep only the active Conan copy exposed in one library, then refresh the assistant.")
+        };
+    }
+
+    private static int ScoreConanSteamAppsRoot(string steamAppsRoot)
+    {
+        var commonRoot = Path.Combine(steamAppsRoot, "common");
+        var manifestPath = Path.Combine(steamAppsRoot, "appmanifest_440900.acf");
+        var managedPath = Path.Combine(commonRoot, "Conan Exiles");
+        var enhancedPath = Path.Combine(commonRoot, "Conan Exiles Enhanced");
+        var legacyPath = Path.Combine(commonRoot, "Conan Exiles Legacy");
+        var score = 0;
+
+        if (File.Exists(manifestPath))
+        {
+            score += 20;
+        }
+
+        if (Directory.Exists(managedPath))
+        {
+            score += 10;
+        }
+
+        if (Directory.Exists(enhancedPath))
+        {
+            score += 6;
+        }
+
+        if (Directory.Exists(legacyPath))
+        {
+            score += 6;
+        }
+
+        if (Directory.Exists(managedPath) && (Directory.Exists(enhancedPath) || Directory.Exists(legacyPath)))
+        {
+            score += 12;
+        }
+
+        if (Directory.Exists(enhancedPath) && Directory.Exists(legacyPath))
+        {
+            score += 8;
+        }
+
+        return score;
+    }
+
+    private static SteamRediscoveryFolder GetSteamRediscoveryFolder(string label, string path)
+    {
+        var exists = Directory.Exists(path);
+        return new SteamRediscoveryFolder(
+            label,
+            path,
+            exists,
+            exists && File.Exists(Path.Combine(path, "ConanSandbox", "Binaries", "Win64", "ConanSandbox-Win64-Shipping.exe")),
+            exists && File.Exists(Path.Combine(path, "ConanSandbox", "Binaries", "Win64", "ConanSandbox.exe")));
+    }
+
+    private static string NormalizeRediscoveryTarget(string targetBranch) =>
+        targetBranch.Equals("Legacy", StringComparison.OrdinalIgnoreCase)
+            ? "Legacy"
+            : targetBranch.Equals("Enhanced", StringComparison.OrdinalIgnoreCase)
+                ? "Enhanced"
+                : throw new InvalidOperationException("Choose Enhanced or Legacy as the Steam switch target.");
+
+    private static string? ReadManifestSectionValue(string manifest, string sectionName, string key)
+    {
+        var section = Regex.Match(manifest, $"\"{Regex.Escape(sectionName)}\"\\s*\\{{(?<body>[\\s\\S]*?)\\}}", RegexOptions.IgnoreCase);
+        return section.Success ? ReadManifestValue(section.Groups["body"].Value, key) : null;
+    }
+
+    private static long? ReadManifestLong(string manifest, string key)
+    {
+        var value = ReadManifestValue(manifest, key);
+        return long.TryParse(value, out var parsed) ? parsed : null;
     }
 
     private IEnumerable<string> GetSteamLibraryRoots()

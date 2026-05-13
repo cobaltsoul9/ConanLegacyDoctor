@@ -5,9 +5,9 @@
 ## Downloads
 
 - Source code is available in this repository.
-- Current public Windows release: `v0.1.3`.
+- Current public Windows release: `v0.1.4`.
 - The latest tested Windows executable build is produced locally at `artifacts\publish\win-x64\ConanLegacyDoctor.exe`.
-- Current local build SHA-256: `60f790bc41bd8b15a0482b60873b6f043de074a5b781df2985848eabf4b532f2`.
+- Current local build SHA-256: `7701fe74d53378a865df03db44349616b0e1edf354d1fa095d11377836ec113a`.
 - Downloadable Windows builds are published through GitHub Releases. The executable is currently unsigned.
 - Since an unsigned executable can trigger Windows reputation warnings, the repository also keeps the source, checksum file, and transparent PowerShell entry points available for inspection.
 
@@ -50,7 +50,10 @@ For players who should not need to touch PowerShell directly, `Start-LegacyDocto
 
 The GUI is WPF-based and stays native to Windows. It provides:
 
-- a `Start Here` guide with the simplest first repair path,
+- a `Start Here` assessment that recommends the best branch-switch or troubleshooting path it can identify,
+- a guided branch-switch assistant that parks and restores branch folders reversibly while Steam catches up,
+- on-screen Steam screenshots during uninstall and branch-selection steps,
+- branch-switch guidance that explains `parked` and `live` folders in plain language,
 - short plain-language explanations of actions, quarantine, and vanilla launch,
 - tips for what to try next only if the first clean attempt does not help,
 - a `ToT Saves` tab for loading dated TotCustom backups into the currently selected install,
@@ -61,6 +64,7 @@ The GUI is WPF-based and stays native to Windows. It provides:
 - guided reversible preparation,
 - optional save DB quarantine for a fresh vanilla boot test,
 - a native vanilla launch button for the selected install,
+- a Steam file-validation shortcut for the actively managed Conan install,
 - readable `Actions` browsing and undo,
 - ZIP support bundle export.
 
@@ -215,6 +219,143 @@ powershell.exe -ExecutionPolicy Bypass -File .\LegacyDoctor.ps1 `
 ```
 
 Support bundles never include save database files. They include human-readable action records rather than raw internal ledger details.
+
+## Experimental Steam Folder Swap Helper
+
+The repository also includes:
+
+```text
+scripts\Switch-ConanManagedInstall.ps1
+```
+
+This is a cautious support script for side-by-side installs where one Conan folder is parked as `Conan Exiles Enhanced` and the other needs to become Steam's managed `Conan Exiles` folder before a beta-branch repair or verify pass.
+
+It is intentionally staged:
+
+- `Inspect` only reports what Steam and the folders currently look like.
+- `CaptureState` copies the current Conan app manifest and writes a timestamped JSON snapshot for later comparison.
+- `StageLegacyAsManaged` and `RestoreEnhancedAsManaged` default to dry-run output.
+- Actual renames happen only when `-Apply` is added.
+- The script can request a normal Steam shutdown before renaming and can reopen Steam afterward with `-RestartSteam`.
+- It still refuses to continue if Steam or Conan does not actually exit.
+- The script also refuses when Steam's manifest still shows an unfinished queued Conan download/update.
+
+Inspect current state:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Switch-ConanManagedInstall.ps1 -Action Inspect
+```
+
+Capture the current Steam manifest and folder state before any experiment:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Switch-ConanManagedInstall.ps1 -Action CaptureState
+```
+
+Snapshots are written under:
+
+```text
+artifacts\steam-swap-snapshots
+```
+
+Preview restoring Enhanced to the Steam-managed folder:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Switch-ConanManagedInstall.ps1 -Action RestoreEnhancedAsManaged
+```
+
+Only after Steam has fully finished its download or repair work and Steam has been closed, apply the actual folder swap:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Switch-ConanManagedInstall.ps1 `
+  -Action RestoreEnhancedAsManaged `
+  -RestartSteam `
+  -Apply
+```
+
+The reason for this care is simple: Steam validates and updates whichever folder it currently treats as the installed Conan target. Showing Steam the wrong folder at the wrong time can cause the exact large replacement download this workflow is meant to avoid.
+
+For later rediscovery experiments, preserve the full `appmanifest_440900.acf` snapshot rather than trying to hand-edit individual beta or queue fields. Steam branch requests, currently mounted branch data, installed depot state, and transient update progress live together there; the helper treats that manifest as evidence to capture, not as a safe file to rewrite manually.
+
+The helper does not try to switch Conan's Steam branch automatically. Valve documents branch selection through the Steam client UI, or through Steamworks APIs used by the game itself, not as a general-purpose desktop command for external tools. After the folder move, the script tells the user exactly which branch to choose in Steam before they continue.
+
+## Guided Steam Rediscovery Flow
+
+After testing, the more reliable branch-switch recovery path is the Steam rediscovery flow in:
+
+```text
+scripts\Guide-ConanSteamRediscovery.ps1
+```
+
+This script does not edit app manifests. It guides the user through the workflow that lets Steam relink an already-present branch folder:
+
+1. park the currently managed `Conan Exiles` folder under a branch-specific name,
+2. tell the user to uninstall Conan in Steam,
+3. check whether Steam now considers it uninstalled,
+4. tell the user to choose the desired branch while it is uninstalled,
+5. expose the matching parked folder back as `Conan Exiles`,
+6. tell the user to press Install so Steam can discover and verify the existing files.
+
+Check the current state:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Guide-ConanSteamRediscovery.ps1 `
+  -Step Status `
+  -TargetBranch Enhanced
+```
+
+Preview the first rename step:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Guide-ConanSteamRediscovery.ps1 `
+  -Step PrepareUninstall `
+  -TargetBranch Enhanced
+```
+
+Apply it only when the printed folders and target branch are correct:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Guide-ConanSteamRediscovery.ps1 `
+  -Step PrepareUninstall `
+  -TargetBranch Enhanced `
+  -Apply
+```
+
+The later stages are:
+
+```text
+ConfirmUninstalled
+ExposeTargetForInstall
+CheckAfterInstall
+```
+
+Run each stage only when the script tells you to. Steam Support's own recovery guidance relies on the same principle: when Steam thinks a game is not installed, pressing Install can make it rediscover files already present in the correct library folder rather than downloading everything again.
+
+## Twilight Mire Mod Pak Checker
+
+The repository includes a reference manifest built from the currently observed Twilight Mire Legacy mod list on this machine:
+
+```text
+reference\TwilightMire.Legacy.ModPakManifest.json
+```
+
+To check whether a player's local Workshop `.pak` files match that reference:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-ModPakManifest.ps1 `
+  -ManifestPath .\reference\TwilightMire.Legacy.ModPakManifest.json `
+  -WorkshopRoot "C:\Program Files (x86)\Steam\steamapps\workshop\content\440900"
+```
+
+The checker reports missing files, SHA-256 mismatches, and size mismatches per mod entry.
+
+To regenerate a manifest from a known-good `modlist.txt`:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\New-ModPakManifest.ps1 `
+  -ModListPath "C:\Program Files (x86)\Steam\steamapps\common\Conan Exiles\ConanSandbox\Mods\modlist.txt" `
+  -OutputPath .\reference\TwilightMire.Legacy.ModPakManifest.json
+```
 
 ## JSON Output
 

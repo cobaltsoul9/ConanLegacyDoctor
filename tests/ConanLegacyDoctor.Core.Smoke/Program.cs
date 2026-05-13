@@ -103,6 +103,10 @@ try
     Assert(launchPlan.VanillaReady, "Expected vanilla launch readiness after modlist quarantine.");
     Assert(launchPlan.LaunchStrategy == "DirectExecutable", "Expected direct executable launch strategy.");
 
+    var validationPlan = doctor.GetSteamValidationPlan(gameRoot);
+    Assert(validationPlan.SteamManagedTarget, "Expected Steam validation to allow the manifest-confirmed install.");
+    Assert(validationPlan.SteamUri == "steam://validate/440900", "Expected Conan Steam validation URI.");
+
     var restored = doctor.Restore(transaction.Id, force: false);
     Assert(restored.Status == "restored", "Expected restored transaction.");
     Assert(File.Exists(Path.Combine(gameRoot, "ConanSandbox", "Mods", "modlist.txt")), "Expected modlist restore.");

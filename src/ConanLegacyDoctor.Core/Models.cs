@@ -99,6 +99,24 @@ public sealed record VanillaLaunchResult(
     string SteamUri,
     DateTimeOffset StartedAtUtc);
 
+public sealed record SteamValidationPlan(
+    int SchemaVersion,
+    string Tool,
+    string GameRoot,
+    string BranchMode,
+    string BranchConfidence,
+    bool SteamManagedTarget,
+    string SteamUri,
+    IReadOnlyList<string> Warnings);
+
+public sealed record SteamValidationResult(
+    int SchemaVersion,
+    string Tool,
+    string GameRoot,
+    string BranchMode,
+    string SteamUri,
+    DateTimeOffset StartedAtUtc);
+
 public sealed record SupportBundleOptions(
     string? DestinationPath,
     bool IncludeRecentLogs,
@@ -123,3 +141,33 @@ public sealed record TotCustomSource(
     DateTimeOffset CapturedAtUtc,
     long? SizeBytes,
     string Detail);
+
+public sealed record SteamRediscoveryFolder(
+    string Label,
+    string Path,
+    bool Exists,
+    bool LooksEnhanced,
+    bool LooksLegacy);
+
+public sealed record SteamRediscoveryState(
+    int SchemaVersion,
+    string Tool,
+    string SteamAppsRoot,
+    string ManifestPath,
+    bool ManifestExists,
+    string? RequestedBetaKey,
+    string? MountedBetaKey,
+    string? BuildId,
+    string? TargetBuildId,
+    long? BytesToDownload,
+    long? BytesDownloaded,
+    SteamRediscoveryFolder Managed,
+    SteamRediscoveryFolder EnhancedParked,
+    SteamRediscoveryFolder LegacyParked,
+    bool TargetEnhancedAlreadyManaged,
+    bool TargetLegacyAlreadyManaged,
+    bool CanParkManagedForEnhancedSwitch,
+    bool CanParkManagedForLegacySwitch,
+    bool CanExposeEnhancedForInstall,
+    bool CanExposeLegacyForInstall,
+    IReadOnlyList<string> Guidance);

@@ -1,0 +1,228 @@
+[CmdletBinding()]
+param(
+    [ValidateSet('Status', 'PrepareUninstall', 'ConfirmUninstalled', 'ExposeTargetForInstall', 'CheckAfterInstall')]
+    [string]$Step = 'Status',
+    [ValidateSet('Enhanced', 'Legacy')]
+    [string]$TargetBranch = 'Enhanced',
+    [string]$SteamAppsRoot = 'C:\Program Files (x86)\Steam\steamapps',
+    [string]$ManagedFolderName = 'Conan Exiles',
+    [string]$EnhancedFolderName = 'Conan Exiles Enhanced',
+    [string]$LegacyFolderName = 'Conan Exiles Legacy',
+    [switch]$Apply
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Get-FullPath {
+    param([Parameter(Mandatory)][string]$Path)
+    [System.IO.Path]::GetFullPath($Path)
+}
+
+function Get-ManifestValue {
+    param(
+        [Parameter(Mandatory)][string]$Content,
+        [Parameter(Mandatory)][string]$Pattern
+    )
+
+    if ($Content -match $Pattern) {
+        return $Matches[1]
+    }
+
+    return $null
+}
+
+function Get-ConanManifestState {
+    param([Parameter(Mandatory)][string]$ManifestPath)
+
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
+        return [pscustomobject]@{
+            Exists = $false
+            InstallDir = $null
+            BuildId = $null
+            TargetBuildId = $null
+            UserBeta = $null
+            MountedBeta = $null
+            StateFlags = $null
+            BytesToDownload = $null
+            BytesDownloaded = $null
+        }
+    }
+
+    $content = Get-Content -LiteralPath $ManifestPath -Raw
+    [pscustomobject]@{
+        Exists = $true
+        InstallDir = Get-ManifestValue -Content $content -Pattern '"installdir"\s+"([^"]+)"'
+        BuildId = Get-ManifestValue -Content $content -Pattern '"buildid"\s+"([^"]+)"'
+        TargetBuildId = Get-ManifestValue -Content $content -Pattern '"TargetBuildID"\s+"([^"]+)"'
+        UserBeta = Get-ManifestValue -Content $content -Pattern '"UserConfig"[\s\S]*?"BetaKey"\s+"([^"]+)"'
+        MountedBeta = Get-ManifestValue -Content $content -Pattern '"MountedConfig"[\s\S]*?"BetaKey"\s+"([^"]+)"'
+        StateFlags = Get-ManifestValue -Content $content -Pattern '"StateFlags"\s+"([^"]+)"'
+        BytesToDownload = [int64](Get-ManifestValue -Content $content -Pattern '"BytesToDownload"\s+"([^"]+)"')
+        BytesDownloaded = [int64](Get-ManifestValue -Content $content -Pattern '"BytesDownloaded"\s+"([^"]+)"')
+    }
+}
+
+function Get-FolderState {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $legacyExe = Join-Path $Path 'ConanSandbox\Binaries\Win64\ConanSandbox.exe'
+    $enhancedExe = Join-Path $Path 'ConanSandbox\Binaries\Win64\ConanSandbox-Win64-Shipping.exe'
+    [pscustomobject]@{
+        Path = $Path
+        Exists = Test-Path -LiteralPath $Path -PathType Container
+        LegacyShape = Test-Path -LiteralPath $legacyExe -PathType Leaf
+        EnhancedShape = Test-Path -LiteralPath $enhancedExe -PathType Leaf
+    }
+}
+
+function Write-Status {
+    param(
+        [Parameter(Mandatory)]$Manifest,
+        [Parameter(Mandatory)]$Managed,
+        [Parameter(Mandatory)]$Enhanced,
+        [Parameter(Mandatory)]$Legacy
+    )
+
+    Write-Output 'Conan Steam rediscovery guide'
+    Write-Output ''
+    Write-Output ("Manifest present: {0}" -f $Manifest.Exists)
+    Write-Output ("Manifest install dir: {0}" -f ($(if ($Manifest.InstallDir) { $Manifest.InstallDir } else { '<none>' })))
+    Write-Output ("Manifest mounted branch: {0}" -f ($(if ($Manifest.MountedBeta) { $Manifest.MountedBeta } else { '<default/public or none>' })))
+    Write-Output ("Manifest requested branch: {0}" -f ($(if ($Manifest.UserBeta) { $Manifest.UserBeta } else { '<default/public or none>' })))
+    Write-Output ("Manifest build id: {0}" -f ($(if ($Manifest.BuildId) { $Manifest.BuildId } else { '<none>' })))
+    Write-Output ("Manifest target build id: {0}" -f ($(if ($Manifest.TargetBuildId) { $Manifest.TargetBuildId } else { '<none>' })))
+    Write-Output ("Manifest queued bytes: {0}/{1}" -f $Manifest.BytesDownloaded, $Manifest.BytesToDownload)
+    Write-Output ''
+    Write-Output ("Managed folder:  {0} | exists={1} | enhanced={2} | legacy={3}" -f $Managed.Path, $Managed.Exists, $Managed.EnhancedShape, $Managed.LegacyShape)
+    Write-Output ("Enhanced folder: {0} | exists={1} | enhanced={2} | legacy={3}" -f $Enhanced.Path, $Enhanced.Exists, $Enhanced.EnhancedShape, $Enhanced.LegacyShape)
+    Write-Output ("Legacy folder:   {0} | exists={1} | enhanced={2} | legacy={3}" -f $Legacy.Path, $Legacy.Exists, $Legacy.EnhancedShape, $Legacy.LegacyShape)
+}
+
+function Assert-FolderExists {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Label
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        throw "$Label folder is missing: $Path"
+    }
+}
+
+function Assert-FolderMissing {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Label
+    )
+
+    if (Test-Path -LiteralPath $Path) {
+        throw "$Label path must be absent for this step: $Path"
+    }
+}
+
+function Move-Folder {
+    param(
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$Destination,
+        [Parameter(Mandatory)][bool]$ShouldApply
+    )
+
+    Write-Output ("Move: {0}" -f $Source)
+    Write-Output ("  To: {0}" -f $Destination)
+    if ($ShouldApply) {
+        Move-Item -LiteralPath $Source -Destination $Destination
+    }
+}
+
+$steamAppsRootFull = Get-FullPath -Path $SteamAppsRoot
+$commonRoot = Join-Path $steamAppsRootFull 'common'
+$manifestPath = Join-Path $steamAppsRootFull 'appmanifest_440900.acf'
+$managedPath = Join-Path $commonRoot $ManagedFolderName
+$enhancedPath = Join-Path $commonRoot $EnhancedFolderName
+$legacyPath = Join-Path $commonRoot $LegacyFolderName
+
+$manifest = Get-ConanManifestState -ManifestPath $manifestPath
+$managed = Get-FolderState -Path $managedPath
+$enhanced = Get-FolderState -Path $enhancedPath
+$legacy = Get-FolderState -Path $legacyPath
+
+Write-Status -Manifest $manifest -Managed $managed -Enhanced $enhanced -Legacy $legacy
+Write-Output ''
+Write-Output ("Requested guide step: {0}" -f $Step)
+Write-Output ("Target branch: {0}" -f $TargetBranch)
+Write-Output ("Execution mode: {0}" -f ($(if ($Apply) { 'APPLY' } else { 'DRY RUN' })))
+Write-Output ''
+
+switch ($Step) {
+    'Status' {
+        Write-Output 'No changes made.'
+        return
+    }
+
+    'PrepareUninstall' {
+        Assert-FolderExists -Path $managedPath -Label 'Managed Conan'
+        if ($TargetBranch -eq 'Enhanced') {
+            Assert-FolderExists -Path $enhancedPath -Label 'Enhanced parked'
+            Assert-FolderMissing -Path $legacyPath -Label 'Legacy parked'
+            Move-Folder -Source $managedPath -Destination $legacyPath -ShouldApply:$Apply
+        }
+        else {
+            Assert-FolderExists -Path $legacyPath -Label 'Legacy parked'
+            Assert-FolderMissing -Path $enhancedPath -Label 'Enhanced parked'
+            Move-Folder -Source $managedPath -Destination $enhancedPath -ShouldApply:$Apply
+        }
+
+        Write-Output ''
+        Write-Output 'Next user step: in Steam, press Uninstall for Conan Exiles.'
+        Write-Output 'Do not press Install yet. After uninstall finishes, rerun this script with -Step ConfirmUninstalled.'
+        return
+    }
+
+    'ConfirmUninstalled' {
+        if ($manifest.Exists) {
+            Write-Output 'Steam still has appmanifest_440900.acf. If Steam does not show Conan as uninstalled yet, wait or complete the uninstall first.'
+        }
+        else {
+            Write-Output 'The Conan appmanifest is absent. Steam appears to consider Conan uninstalled.'
+        }
+
+        Write-Output ''
+        Write-Output ("Next user step: in Steam, choose the {0} branch for Conan Exiles while it is uninstalled." -f $TargetBranch)
+        Write-Output 'After the branch is selected, rerun this script with -Step ExposeTargetForInstall.'
+        return
+    }
+
+    'ExposeTargetForInstall' {
+        Assert-FolderMissing -Path $managedPath -Label 'Managed Conan'
+        if ($TargetBranch -eq 'Enhanced') {
+            Assert-FolderExists -Path $enhancedPath -Label 'Enhanced parked'
+            Move-Folder -Source $enhancedPath -Destination $managedPath -ShouldApply:$Apply
+        }
+        else {
+            Assert-FolderExists -Path $legacyPath -Label 'Legacy parked'
+            Move-Folder -Source $legacyPath -Destination $managedPath -ShouldApply:$Apply
+        }
+
+        Write-Output ''
+        Write-Output 'Next user step: in Steam, press Install for Conan Exiles.'
+        Write-Output 'Pick the same Steam library. Steam should discover and verify the exposed existing files instead of starting from zero.'
+        Write-Output 'After Steam starts that discovery/verification step, rerun this script with -Step CheckAfterInstall.'
+        return
+    }
+
+    'CheckAfterInstall' {
+        if (-not $manifest.Exists) {
+            Write-Output 'The appmanifest is still absent. Steam may not have started the install recognition step yet.'
+            return
+        }
+
+        Write-Output 'Steam recreated the Conan appmanifest.'
+        Write-Output ("Current mounted branch: {0}" -f ($(if ($manifest.MountedBeta) { $manifest.MountedBeta } else { '<default/public or none>' })))
+        Write-Output ("Current requested branch: {0}" -f ($(if ($manifest.UserBeta) { $manifest.UserBeta } else { '<default/public or none>' })))
+        Write-Output ("Current queued bytes: {0}/{1}" -f $manifest.BytesDownloaded, $manifest.BytesToDownload)
+        Write-Output ''
+        Write-Output 'If Steam says it is discovering or validating existing files, let it finish. If it instead starts a very large fresh download, stop there and preserve the folder before proceeding.'
+        return
+    }
+}

@@ -51,7 +51,7 @@
             <Button x:Name="ScanButton" Grid.Column="3" Content="Scan" Width="92" Height="32" Margin="10,0,0,0" Background="#2A6FDB" Foreground="White" Click="ScanButton_Click" ToolTip="Start here. The doctor checks what it sees before changing anything."/>
         </Grid>
 
-        <TabControl Grid.Row="2">
+        <TabControl x:Name="MainTabs" Grid.Row="2">
             <TabItem Header="Start Here">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <Grid Margin="12">
@@ -63,17 +63,31 @@
                         <StackPanel Grid.Column="0" Margin="0,0,14,0">
                             <Border Padding="16" Background="#FFFFFF" BorderBrush="#D2D9E1" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12">
                                 <StackPanel>
-                                    <TextBlock Text="The simplest path" FontSize="18" FontWeight="SemiBold" Foreground="#18202A"/>
-                                    <TextBlock Text="Use this when you are tired and just want the selected install to get a fair, clean try." Foreground="#53606F" Margin="0,5,0,12" TextWrapping="Wrap"/>
-                                    <TextBlock Text="1. Press Scan. If asked, choose the Conan install you want to repair." Margin="0,0,0,7" TextWrapping="Wrap"/>
-                                    <TextBlock Text="2. Leave the extra boxes off on the first attempt. Press Prepare." Margin="0,0,0,7" TextWrapping="Wrap"/>
-                                    <TextBlock Text="3. Press Launch Vanilla Test. Let the game reach the menu before judging the result." Margin="0,0,0,7" TextWrapping="Wrap"/>
-                                    <TextBlock Text="4. If you want everything put back, open Actions, pick the action, and press Undo Selected." TextWrapping="Wrap"/>
-                                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-                                        <Button Content="Scan" Width="96" Height="32" Margin="0,0,10,0" Background="#2A6FDB" Foreground="White" Click="ScanButton_Click"/>
-                                        <Button x:Name="StartPrepareButton" Content="Prepare" Width="138" Height="32" Margin="0,0,10,0" Background="#2C8A57" Foreground="White" Click="PrepareButton_Click"/>
-                                        <Button x:Name="StartLaunchButton" Content="Launch Vanilla Test" Width="166" Height="32" Background="#2A6FDB" Foreground="White" Click="LaunchVanillaButton_Click"/>
-                                    </StackPanel>
+                                    <TextBlock Text="What the doctor found" FontSize="18" FontWeight="SemiBold" Foreground="#18202A"/>
+                                    <TextBlock x:Name="AssistantAssessmentText"
+                                               Text="Scanning local Conan installs..."
+                                               Foreground="#53606F"
+                                               Margin="0,8,0,12"
+                                               TextWrapping="Wrap"/>
+                                    <Border Background="#F5F8FC" BorderBrush="#D7E2F0" BorderThickness="1" Padding="12" CornerRadius="6" Margin="0,4,0,12">
+                                        <StackPanel>
+                                            <TextBlock Text="Recommended next step" FontWeight="SemiBold" Foreground="#18202A"/>
+                                            <TextBlock x:Name="AssistantRecommendationText"
+                                                       Text="The doctor is still deciding what branch action makes sense."
+                                                       Foreground="#53606F"
+                                                       Margin="0,5,0,10"
+                                                       TextWrapping="Wrap"/>
+                                            <WrapPanel>
+                                                <Button x:Name="SwitchToEnhancedButton" Content="Switch to Enhanced" Width="160" Height="34" Margin="0,0,10,8" Background="#5D5BCE" Foreground="White" Click="OpenEnhancedSwitchWizardButton_Click"/>
+                                                <Button x:Name="SwitchToLegacyButton" Content="Switch to Legacy" Width="150" Height="34" Margin="0,0,10,8" Background="#5D5BCE" Foreground="White" Click="OpenLegacySwitchWizardButton_Click"/>
+                                            </WrapPanel>
+                                        </StackPanel>
+                                    </Border>
+                                    <WrapPanel>
+                                        <Button Content="Refresh Assessment" Width="150" Height="32" Margin="0,0,10,10" Background="#2A6FDB" Foreground="White" Click="RefreshAssessmentButton_Click"/>
+                                        <Button Content="Troubleshooting" Width="142" Height="32" Margin="0,0,10,10" Background="#2C8A57" Foreground="White" Click="OpenRepairAssistantButton_Click"/>
+                                        <Button Content="ToT Save Management" Width="168" Height="32" Margin="0,0,10,10" Click="OpenTotSavesButton_Click"/>
+                                    </WrapPanel>
                                 </StackPanel>
                             </Border>
 
@@ -98,6 +112,10 @@
                                     <TextBlock Text="A clean launch without an active mod list, useful when testing whether the selected install itself can boot." TextWrapping="Wrap"/>
                                     <TextBlock Text="Quarantine" FontWeight="SemiBold" Margin="0,12,0,2"/>
                                     <TextBlock Text="Move aside safely and record how to restore it. The doctor prefers reversible moves over deleting." TextWrapping="Wrap"/>
+                                    <TextBlock Text="Parked" FontWeight="SemiBold" Margin="0,12,0,2"/>
+                                    <TextBlock Text="A full Conan branch folder that the doctor has renamed out of Steam's live path so it stays safe and can be brought back later without redownloading." TextWrapping="Wrap"/>
+                                    <TextBlock Text="Live" FontWeight="SemiBold" Margin="0,12,0,2"/>
+                                    <TextBlock Text="The Conan folder currently sitting in Steam's normal managed location. This is the one Steam will try to launch, verify, or install against." TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
 
@@ -113,7 +131,7 @@
                     </Grid>
                 </ScrollViewer>
             </TabItem>
-            <TabItem Header="Diagnostics">
+            <TabItem x:Name="DiagnosticsTab" Header="Diagnostics">
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -137,7 +155,8 @@
                         </WrapPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
                             <Button x:Name="PrepareButton" Content="Prepare" Width="150" Height="34" Margin="0,0,10,0" Background="#2C8A57" Foreground="White" Click="PrepareButton_Click" ToolTip="Records a reversible repair action for the selected install."/>
-                            <Button x:Name="LaunchVanillaButton" Content="Launch Vanilla Test" Width="170" Height="34" Background="#2A6FDB" Foreground="White" Click="LaunchVanillaButton_Click" ToolTip="Starts the selected install in the clean test path after the active mod list has been moved aside."/>
+                            <Button x:Name="LaunchVanillaButton" Content="Launch Vanilla Test" Width="170" Height="34" Margin="0,0,10,0" Background="#2A6FDB" Foreground="White" Click="LaunchVanillaButton_Click" ToolTip="Starts the selected install in the clean test path after the active mod list has been moved aside."/>
+                            <Button x:Name="VerifySteamFilesButton" Content="Open Steam File Check" Width="180" Height="34" Background="#5D5BCE" Foreground="White" Click="VerifySteamFilesButton_Click" ToolTip="Opens Steam's own Conan Exiles file validation when the selected install is the Steam-managed Conan target."/>
                         </StackPanel>
                     </Grid>
 
@@ -161,7 +180,7 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="ToT Saves">
+            <TabItem x:Name="TotSavesTab" Header="ToT Saves">
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>

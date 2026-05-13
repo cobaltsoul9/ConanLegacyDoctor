@@ -21,5 +21,8 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Assets\AppIcon.png" />
+    <Resource Include="Assets\BranchSwitchToEnhanced.png" />
+    <Resource Include="Assets\BranchSwitchToLegacy.png" />
+    <Resource Include="Assets\UninstallConanExiles.png" />
   </ItemGroup>
 </Project>
