@@ -149,6 +149,16 @@ public sealed record SteamRediscoveryFolder(
     bool LooksEnhanced,
     bool LooksLegacy);
 
+public sealed record SteamRediscoveryWorkshop(
+    string ContentPath,
+    bool ContentExists,
+    string ParkedContentPath,
+    bool ParkedContentExists,
+    string ManifestPath,
+    bool ManifestExists,
+    string ParkedManifestPath,
+    bool ParkedManifestExists);
+
 public sealed record SteamRediscoveryState(
     int SchemaVersion,
     string Tool,
@@ -164,6 +174,7 @@ public sealed record SteamRediscoveryState(
     SteamRediscoveryFolder Managed,
     SteamRediscoveryFolder EnhancedParked,
     SteamRediscoveryFolder LegacyParked,
+    SteamRediscoveryWorkshop Workshop,
     bool TargetEnhancedAlreadyManaged,
     bool TargetLegacyAlreadyManaged,
     bool CanParkManagedForEnhancedSwitch,

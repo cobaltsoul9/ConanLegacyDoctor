@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.5 - 2026-05-14
+
+- Branch switching now parks Conan Workshop content and Workshop metadata before Steam uninstall, then restores them before the Steam install/verification step.
+- The Branch Switch Assistant now shows Workshop mods as live, parked, or missing alongside the branch folders.
+
 ## v0.1.4 - 2026-05-13
 
 - Added a recommendation-first start screen that shows the most useful branch-switch options instead of presenting every tool equally.

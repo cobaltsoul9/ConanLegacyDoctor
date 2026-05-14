@@ -116,6 +116,8 @@
                                     <TextBlock Text="A full Conan branch folder that the doctor has renamed out of Steam's live path so it stays safe and can be brought back later without redownloading." TextWrapping="Wrap"/>
                                     <TextBlock Text="Live" FontWeight="SemiBold" Margin="0,12,0,2"/>
                                     <TextBlock Text="The Conan folder currently sitting in Steam's normal managed location. This is the one Steam will try to launch, verify, or install against." TextWrapping="Wrap"/>
+                                    <TextBlock Text="Workshop Mods" FontWeight="SemiBold" Margin="0,12,0,2"/>
+                                    <TextBlock Text="Steam's downloaded mod cache for Conan. During branch switching, the doctor parks this cache before uninstall and restores it before Install so Steam has a chance to verify it instead of redownloading it." TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
 

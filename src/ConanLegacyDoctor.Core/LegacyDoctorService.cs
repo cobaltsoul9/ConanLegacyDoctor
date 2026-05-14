@@ -579,6 +579,7 @@ public sealed class LegacyDoctorService
         var managed = GetSteamRediscoveryFolder("Managed Conan", Path.Combine(commonRoot, "Conan Exiles"));
         var enhanced = GetSteamRediscoveryFolder("Parked Enhanced", Path.Combine(commonRoot, "Conan Exiles Enhanced"));
         var legacy = GetSteamRediscoveryFolder("Parked Legacy", Path.Combine(commonRoot, "Conan Exiles Legacy"));
+        var workshop = GetSteamRediscoveryWorkshop(steamAppsRoot);
 
         var requestedBeta = manifest is null ? null : ReadManifestSectionValue(manifest, "UserConfig", "BetaKey");
         var mountedBeta = manifest is null ? null : ReadManifestSectionValue(manifest, "MountedConfig", "BetaKey");
@@ -624,6 +625,15 @@ public sealed class LegacyDoctorService
             guidance.Add("No parked Legacy folder is available. Switching to Legacy can still be guided, but Steam may need to download that branch.");
         }
 
+        if (workshop.ContentExists)
+        {
+            guidance.Add("Conan Workshop mod content is live in this Steam library. The branch assistant will park it before Steam uninstall so the uninstall step cannot remove it.");
+        }
+        else if (workshop.ParkedContentExists)
+        {
+            guidance.Add("Conan Workshop mod content is already parked safely and will be restored before Steam install/verification.");
+        }
+
         return new SteamRediscoveryState(
             SchemaVersion,
             ToolName,
@@ -639,6 +649,7 @@ public sealed class LegacyDoctorService
             managed,
             enhanced,
             legacy,
+            workshop,
             managed.LooksEnhanced,
             managed.LooksLegacy,
             managed.Exists && !legacy.Exists,
@@ -652,6 +663,7 @@ public sealed class LegacyDoctorService
     {
         var state = GetSteamRediscoveryState();
         var transaction = NewTransaction(state.SteamAppsRoot, "steam-rediscovery-prepare");
+        ValidateCanParkWorkshopForSteamRediscovery(state);
 
         switch (NormalizeRediscoveryTarget(targetBranch))
         {
@@ -665,6 +677,8 @@ public sealed class LegacyDoctorService
                 {
                     throw new InvalidOperationException("A parked Legacy folder already exists. Resolve that before parking the managed folder for an Enhanced switch.");
                 }
+
+                ParkWorkshopForSteamRediscovery(transaction, state);
 
                 MovePathTransactionally(
                     transaction,
@@ -683,6 +697,8 @@ public sealed class LegacyDoctorService
                 {
                     throw new InvalidOperationException("A parked Enhanced folder already exists. Resolve that before parking the managed folder for a Legacy switch.");
                 }
+
+                ParkWorkshopForSteamRediscovery(transaction, state);
 
                 MovePathTransactionally(
                     transaction,
@@ -706,6 +722,7 @@ public sealed class LegacyDoctorService
             throw new InvalidOperationException("Steam already has a managed Conan folder exposed. Uninstall first or resolve that folder before revealing another branch.");
         }
 
+        ValidateCanRestoreWorkshopForSteamRediscovery(state);
         var transaction = NewTransaction(state.SteamAppsRoot, "steam-rediscovery-expose");
         switch (NormalizeRediscoveryTarget(targetBranch))
         {
@@ -736,10 +753,80 @@ public sealed class LegacyDoctorService
                 break;
         }
 
+        RestoreWorkshopForSteamRediscovery(transaction, state);
+
         transaction.Status = "completed";
         transaction.CompletedAtUtc = DateTimeOffset.UtcNow;
         SaveTransaction(transaction);
         return transaction;
+    }
+
+    private void ParkWorkshopForSteamRediscovery(DoctorTransaction transaction, SteamRediscoveryState state)
+    {
+        if (state.Workshop.ContentExists)
+        {
+            MovePathTransactionally(
+                transaction,
+                state.Workshop.ContentPath,
+                state.Workshop.ParkedContentPath,
+                "Park Conan Workshop mod content before Steam uninstall can remove it.");
+        }
+
+        if (state.Workshop.ManifestExists)
+        {
+            MovePathTransactionally(
+                transaction,
+                state.Workshop.ManifestPath,
+                state.Workshop.ParkedManifestPath,
+                "Park Conan Workshop metadata before Steam uninstall can remove it.");
+        }
+    }
+
+    private void RestoreWorkshopForSteamRediscovery(DoctorTransaction transaction, SteamRediscoveryState state)
+    {
+        if (state.Workshop.ParkedContentExists)
+        {
+            MovePathTransactionally(
+                transaction,
+                state.Workshop.ParkedContentPath,
+                state.Workshop.ContentPath,
+                "Restore parked Conan Workshop mod content before Steam install/verification.");
+        }
+
+        if (state.Workshop.ParkedManifestExists)
+        {
+            MovePathTransactionally(
+                transaction,
+                state.Workshop.ParkedManifestPath,
+                state.Workshop.ManifestPath,
+                "Restore parked Conan Workshop metadata before Steam install/verification.");
+        }
+    }
+
+    private static void ValidateCanParkWorkshopForSteamRediscovery(SteamRediscoveryState state)
+    {
+        if (state.Workshop.ContentExists && state.Workshop.ParkedContentExists)
+        {
+            throw new InvalidOperationException("Both live and parked Conan Workshop mod folders already exist. The doctor will not overwrite either copy. Resolve that Workshop folder collision before uninstalling in Steam.");
+        }
+
+        if (state.Workshop.ManifestExists && state.Workshop.ParkedManifestExists)
+        {
+            throw new InvalidOperationException("Both live and parked Conan Workshop metadata files already exist. The doctor will not overwrite either copy. Resolve that Workshop metadata collision before uninstalling in Steam.");
+        }
+    }
+
+    private static void ValidateCanRestoreWorkshopForSteamRediscovery(SteamRediscoveryState state)
+    {
+        if (state.Workshop.ParkedContentExists && state.Workshop.ContentExists)
+        {
+            throw new InvalidOperationException("Both parked and live Conan Workshop mod folders exist. The doctor will not overwrite the live Workshop folder. Resolve that collision before pressing Install in Steam.");
+        }
+
+        if (state.Workshop.ParkedManifestExists && state.Workshop.ManifestExists)
+        {
+            throw new InvalidOperationException("Both parked and live Conan Workshop metadata files exist. The doctor will not overwrite the live Workshop metadata. Resolve that collision before pressing Install in Steam.");
+        }
     }
 
     public SupportBundleResult ExportSupportBundle(string? gameRoot, SupportBundleOptions options)
@@ -1491,6 +1578,26 @@ public sealed class LegacyDoctorService
             exists,
             exists && File.Exists(Path.Combine(path, "ConanSandbox", "Binaries", "Win64", "ConanSandbox-Win64-Shipping.exe")),
             exists && File.Exists(Path.Combine(path, "ConanSandbox", "Binaries", "Win64", "ConanSandbox.exe")));
+    }
+
+    private static SteamRediscoveryWorkshop GetSteamRediscoveryWorkshop(string steamAppsRoot)
+    {
+        var workshopRoot = Path.Combine(steamAppsRoot, "workshop");
+        var contentPath = Path.Combine(workshopRoot, "content", "440900");
+        var parkedRoot = Path.Combine(workshopRoot, "ConanLegacyDoctorParked");
+        var parkedContentPath = Path.Combine(parkedRoot, "content_440900");
+        var manifestPath = Path.Combine(workshopRoot, "appworkshop_440900.acf");
+        var parkedManifestPath = Path.Combine(parkedRoot, "appworkshop_440900.acf");
+
+        return new SteamRediscoveryWorkshop(
+            contentPath,
+            Directory.Exists(contentPath),
+            parkedContentPath,
+            Directory.Exists(parkedContentPath),
+            manifestPath,
+            File.Exists(manifestPath),
+            parkedManifestPath,
+            File.Exists(parkedManifestPath));
     }
 
     private static string NormalizeRediscoveryTarget(string targetBranch) =>

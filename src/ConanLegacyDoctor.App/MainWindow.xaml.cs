@@ -454,6 +454,7 @@ public partial class MainWindow : Window
                 },
                 $"Steam currently sees: {DescribeManagedFolder(state)}",
                 $"Parked Enhanced folder: {(state.EnhancedParked.Exists ? "found" : "not found")}. Parked Legacy folder: {(state.LegacyParked.Exists ? "found" : "not found")}.",
+                $"Workshop mods: {BuildWorkshopStatus(state)}.",
                 $"Steam branch request: {FormatBranchValue(state.RequestedBetaKey)}. Mounted branch: {FormatBranchValue(state.MountedBetaKey)}."
             };
 
@@ -517,7 +518,7 @@ public partial class MainWindow : Window
         var title = new System.Windows.Controls.TextBlock { Text = "Branch Switch Assistant", FontSize = 22, FontWeight = FontWeights.SemiBold };
         var targetText = new System.Windows.Controls.TextBlock
         {
-            Text = $"Target branch: {target}. The doctor handles the reversible folder moves and watches Steam once per second.",
+            Text = $"Target branch: {target}. The doctor handles reversible game and Workshop folder moves, then watches Steam once per second.",
             Margin = new Thickness(0, 6, 0, 0),
             TextWrapping = TextWrapping.Wrap,
             Foreground = System.Windows.Media.Brushes.DimGray
@@ -531,15 +532,19 @@ public partial class MainWindow : Window
         statusGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         statusGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         statusGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        statusGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         var liveCard = CreateWizardStatusCard("Live in Steam");
         var enhancedCard = CreateWizardStatusCard("Enhanced copy");
         var legacyCard = CreateWizardStatusCard("Legacy copy");
+        var workshopCard = CreateWizardStatusCard("Workshop mods");
         statusGrid.Children.Add(liveCard.Root);
         statusGrid.Children.Add(enhancedCard.Root);
         statusGrid.Children.Add(legacyCard.Root);
+        statusGrid.Children.Add(workshopCard.Root);
         System.Windows.Controls.Grid.SetColumn(enhancedCard.Root, 1);
         System.Windows.Controls.Grid.SetColumn(legacyCard.Root, 2);
+        System.Windows.Controls.Grid.SetColumn(workshopCard.Root, 3);
         System.Windows.Controls.Grid.SetRow(statusGrid, 1);
         root.Children.Add(statusGrid);
 
@@ -603,7 +608,7 @@ public partial class MainWindow : Window
             Margin = new Thickness(0, 12, 0, 0),
             Cursor = System.Windows.Input.Cursors.Help,
             Visibility = Visibility.Collapsed,
-            ToolTip = "After the branch verification finishes, Steam may queue an unusually large Workshop download around 70 GB. If Conan itself has already verified correctly, you can stop that Workshop queue and ignore it."
+            ToolTip = "The assistant parks Workshop content before uninstall and restores it before Install. If Steam still queues an unusually large Workshop transfer around 70 GB after Conan itself verifies correctly, you can stop that Workshop queue and ignore it."
         };
         imagePanel.Children.Add(previewCaption);
         imagePanel.Children.Add(previewFrame);
@@ -649,6 +654,11 @@ public partial class MainWindow : Window
                 state.LegacyParked.Exists ? "Parked safely" : state.Managed.LooksLegacy ? "Currently live" : "Not detected",
                 state.LegacyParked.Exists || state.Managed.LooksLegacy ? "#EEF7F0" : "#F3F5F7",
                 state.LegacyParked.Exists || state.Managed.LooksLegacy ? "#C9DEC8" : "#D2D9E1");
+            UpdateWizardStatusCard(
+                workshopCard,
+                BuildWorkshopStatus(state),
+                state.Workshop.ParkedContentExists || state.Workshop.ParkedManifestExists ? "#EEF7F0" : state.Workshop.ContentExists || state.Workshop.ManifestExists ? "#EAF2FB" : "#F3F5F7",
+                state.Workshop.ParkedContentExists || state.Workshop.ParkedManifestExists ? "#C9DEC8" : state.Workshop.ContentExists || state.Workshop.ManifestExists ? "#C7D8EE" : "#D2D9E1");
 
             manualBranchButton.Visibility = stage == BranchSwitchWizardStage.AwaitingBranchSelection
                 && !RequestedBranchMatchesTarget(state, target)
@@ -917,7 +927,23 @@ public partial class MainWindow : Window
     private static string BuildWizardManifestSummary(SteamRediscoveryState state) =>
         $"Steam manifest: {(state.ManifestExists ? "present" : "not present")}. " +
         $"Requested branch: {FormatBranchValue(state.RequestedBetaKey)}. " +
-        $"Mounted branch: {FormatBranchValue(state.MountedBetaKey)}.";
+        $"Mounted branch: {FormatBranchValue(state.MountedBetaKey)}. " +
+        $"Workshop: {BuildWorkshopStatus(state)}.";
+
+    private static string BuildWorkshopStatus(SteamRediscoveryState state)
+    {
+        if (state.Workshop.ParkedContentExists || state.Workshop.ParkedManifestExists)
+        {
+            return "Parked safely";
+        }
+
+        if (state.Workshop.ContentExists || state.Workshop.ManifestExists)
+        {
+            return "Live in Steam";
+        }
+
+        return "Not detected";
+    }
 
     private static string BuildWizardInstruction(
         BranchSwitchWizardStage stage,
@@ -932,7 +958,7 @@ public partial class MainWindow : Window
                 "Preparing the branch assistant.",
 
             BranchSwitchWizardStage.AwaitingSteamUninstall =>
-                "The doctor moved the currently live Conan folder aside in a reversible action. In Steam, press Uninstall for Conan Exiles and wait for Steam to finish. The assistant checks once per second and continues automatically after Steam no longer reports Conan as installed.",
+                "The doctor moved the currently live Conan folder aside in a reversible action. If Workshop mods were present, it moved those aside too so Steam uninstall cannot remove them. In Steam, press Uninstall for Conan Exiles and wait for Steam to finish. The assistant checks once per second and continues automatically after Steam no longer reports Conan as installed.",
 
             BranchSwitchWizardStage.AwaitingBranchSelection =>
                 RequestedBranchMatchesTarget(state, target)
@@ -941,7 +967,7 @@ public partial class MainWindow : Window
 
             BranchSwitchWizardStage.AwaitingSteamInstall =>
                 targetFolderRevealed
-                    ? $"The parked {target} folder is live again at Steam's Conan path. Press Install in Steam and keep the same library. Steam should discover or verify the existing files instead of downloading the full game."
+                    ? $"The parked {target} folder is live again at Steam's Conan path, and any parked Workshop mods have been restored before Steam can look for them. Press Install in Steam and keep the same library. Steam should discover or verify the existing files instead of downloading the full game."
                     : $"No parked {target} folder was available. Press Install in Steam to install {target} normally.",
 
             BranchSwitchWizardStage.InstallDetected =>

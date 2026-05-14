@@ -5,9 +5,9 @@
 ## Downloads
 
 - Source code is available in this repository.
-- Current public Windows release: `v0.1.4`.
+- Current public Windows release: `v0.1.5`.
 - The latest tested Windows executable build is produced locally at `artifacts\publish\win-x64\ConanLegacyDoctor.exe`.
-- Current local build SHA-256: `7701fe74d53378a865df03db44349616b0e1edf354d1fa095d11377836ec113a`.
+- Current local build SHA-256: `6b22a2e8d6d26e61bd69c9b5260abffa536a42f50a1a57a9f7e7d9a498b3fb43`.
 - Downloadable Windows builds are published through GitHub Releases. The executable is currently unsigned.
 - Since an unsigned executable can trigger Windows reputation warnings, the repository also keeps the source, checksum file, and transparent PowerShell entry points available for inspection.
 
@@ -52,6 +52,7 @@ The GUI is WPF-based and stays native to Windows. It provides:
 
 - a `Start Here` assessment that recommends the best branch-switch or troubleshooting path it can identify,
 - a guided branch-switch assistant that parks and restores branch folders reversibly while Steam catches up,
+- Workshop mod folder preservation during branch switching, so Steam uninstall does not remove the local Workshop cache before rediscovery,
 - on-screen Steam screenshots during uninstall and branch-selection steps,
 - branch-switch guidance that explains `parked` and `live` folders in plain language,
 - short plain-language explanations of actions, quarantine, and vanilla launch,
@@ -290,11 +291,13 @@ scripts\Guide-ConanSteamRediscovery.ps1
 This script does not edit app manifests. It guides the user through the workflow that lets Steam relink an already-present branch folder:
 
 1. park the currently managed `Conan Exiles` folder under a branch-specific name,
-2. tell the user to uninstall Conan in Steam,
-3. check whether Steam now considers it uninstalled,
-4. tell the user to choose the desired branch while it is uninstalled,
-5. expose the matching parked folder back as `Conan Exiles`,
-6. tell the user to press Install so Steam can discover and verify the existing files.
+2. park Conan's Workshop content and Workshop metadata if they are present,
+3. tell the user to uninstall Conan in Steam,
+4. check whether Steam now considers it uninstalled,
+5. tell the user to choose the desired branch while it is uninstalled,
+6. expose the matching parked folder back as `Conan Exiles`,
+7. restore the parked Workshop content before Steam install/verification,
+8. tell the user to press Install so Steam can discover and verify the existing files.
 
 Check the current state:
 
